@@ -589,8 +589,13 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             page.wait_for_timeout(2500)
 
             # ---- 4. preco ---------------------------------------------------
-            job.marcar_etapa("preco", f"Definindo preço: USD {item['preco']:.2f}...")
-            tela.escolher_opcao("campo_moeda", "Dólar")
+            # Regra: todos em Dolar, SO o Brasil em Real.
+            if item["codigo"] == "pt-br":
+                moeda_txt, sigla = "Real", "BRL"
+            else:
+                moeda_txt, sigla = "Dólar Americano", "USD"
+            job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
+            tela.escolher_opcao("campo_moeda", moeda_txt)
             valor = f"{item['preco']:.2f}".replace(".", ",")
             tela.preencher("campo_valor", valor)
             tela.shot("preco")

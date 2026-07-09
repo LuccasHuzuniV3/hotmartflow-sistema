@@ -127,13 +127,11 @@ MAPA = {
     ],
 
     # ---------- preco ----------
+    # Moeda tambem e combobox de busca (input#dropdown-input, name "Selecione uma moeda").
     "campo_moeda": [
-        {"tipo": "label", "texto": "Moeda"},
-        {"tipo": "texto", "texto": "Moeda"},
-    ],
-    "opcao_dolar": [
-        {"tipo": "texto", "texto": "Dólar Americano"},
-        {"tipo": "texto", "texto": "Dólar"},
+        {"tipo": "label", "texto": "Selecione uma moeda"},
+        {"tipo": "placeholder", "texto": "Selecione uma moeda"},
+        {"tipo": "role", "role": "textbox", "nome": "Selecione uma moeda"},
     ],
     "campo_valor": [
         {"tipo": "label", "texto": "Valor"},
