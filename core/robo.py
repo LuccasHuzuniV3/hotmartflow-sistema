@@ -384,6 +384,42 @@ class Tela:
         except Exception:
             return False
 
+    def selecionar_club_com_espaco(self, limite: int = 300) -> None:
+        """Na 'Área de Membros', le o nº de produtos de cada Club e clica no que
+        tem MENOS que o limite (com espaço) — o Club cheio (300) fica de fora.
+        Se houver varios com espaço, escolhe o de menor contagem (mais folga)."""
+        import re
+        labels = self.page.get_by_text(re.compile(r"\d+\s+produtos?", re.I))
+        total = labels.count()
+        if total == 0:
+            self.shot("erro_club")
+            raise RoboError("Não achei os Clubs na tela de Área de Membros.")
+        escolhido, menor = None, None
+        for i in range(total):
+            try:
+                txt = labels.nth(i).inner_text()
+            except Exception:
+                continue
+            m = re.search(r"(\d+)", txt)
+            if not m:
+                continue
+            qtd = int(m.group(1))
+            if qtd < limite and (menor is None or qtd < menor):
+                menor, escolhido = qtd, labels.nth(i)
+        if escolhido is None:
+            self.shot("erro_club_cheio")
+            raise RoboError(f"Todos os Clubs estão cheios (>= {limite} produtos).")
+        # clica no CARD (sobe pro ancestral clicavel); fallback no proprio texto
+        try:
+            card = escolhido.locator(
+                "xpath=ancestor::*[self::button or @role='button' "
+                "or contains(@class,'card') or contains(@class,'club')][1]")
+            card.click(timeout=3000)
+        except Exception:
+            escolhido.click()
+        self.page.wait_for_timeout(600)
+        self.job.log(f"Club escolhido: {menor} produtos (com espaço).")
+
     def clicar_por_texto(self, texto: str) -> None:
         """Clica num botao/chip que tenha exatamente esse texto (ex.: categoria
         'Espiritualidade', que na Hotmart e um botao, nao um dropdown)."""
@@ -600,16 +636,32 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             # ---- 4. preco ---------------------------------------------------
             # Regra: todos em Dolar, SO o Brasil em Real.
             if item["codigo"] == "pt-br":
-                moeda_txt, sigla = "Real", "BRL"
+                moeda_txt, sigla = "Real Brasileiro", "BRL"
             else:
                 moeda_txt, sigla = "Dólar Americano", "USD"
             job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
             tela.escolher_opcao("campo_moeda", moeda_txt)
+            # prazo de reembolso (config; a Hotmart ja costuma vir 7 dias) — best-effort
+            try:
+                tela.escolher_opcao("campo_reembolso", f"{int(s['hotmart']['reembolso_dias'])} dias")
+            except RoboError:
+                job.log("Prazo de reembolso: mantido o padrão da Hotmart.", "aviso")
+            # forma de pagamento: sempre à vista
+            tela.escolher_opcao("campo_forma_pagamento", "Pagamento à vista")
             valor = f"{item['preco']:.2f}".replace(".", ",")
             tela.preencher("campo_valor", valor)
             tela.shot("preco")
             tela.clicar("btn_salvar_continuar")
             page.wait_for_timeout(2500)
+
+            # ---- 4b. area de membros: Club com espaco (<300) + Criar produto ----
+            job.marcar_etapa("area_membros", "Área de Membros: escolhendo o Club com espaço...")
+            page.wait_for_timeout(1500)
+            tela.selecionar_club_com_espaco(limite=300)
+            tela.shot("club_escolhido")
+            tela.clicar("btn_criar_produto_final")
+            job.log("Produto criado (rascunho). Seguindo pro conteúdo...")
+            page.wait_for_timeout(4000)
 
             # ---- 5. conteudo (PDF principal + anexos) ------------------------
             anexos_pdf = [a["pdf"] for a in item.get("anexos", [])

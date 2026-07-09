@@ -135,15 +135,35 @@ MAPA = {
         {"tipo": "placeholder", "texto": "Selecione uma moeda"},
         {"tipo": "role", "role": "textbox", "nome": "Selecione uma moeda"},
     ],
+    # Prazo de reembolso — combobox (label "Prazo para solicitação de reembolso").
+    # Ja costuma vir "7 dias" por padrao; setar e best-effort.
+    "campo_reembolso": [
+        {"tipo": "label", "texto": "Prazo para solicitação de reembolso"},
+        {"tipo": "placeholder", "texto": "Prazo para solicitação"},
+    ],
+    # Forma de pagamento — combobox (name "Selecione uma forma de pagamento").
+    "campo_forma_pagamento": [
+        {"tipo": "label", "texto": "Selecione uma forma de pagamento"},
+        {"tipo": "placeholder", "texto": "Selecione uma forma de pagamento"},
+        {"tipo": "role", "role": "textbox", "nome": "Selecione uma forma de pagamento"},
+    ],
     "campo_valor": [
+        {"tipo": "css", "css": "#value"},
+        {"tipo": "role", "role": "textbox", "nome": "Valor"},
         {"tipo": "label", "texto": "Valor"},
         {"tipo": "placeholder", "texto": "0,00"},
-        {"tipo": "css", "css": "input[name='price']"},
     ],
     "btn_salvar_continuar": [
         {"tipo": "role", "role": "button", "nome": "Salvar e Continuar"},
         {"tipo": "role", "role": "button", "nome": "Salvar e continuar"},
         {"tipo": "role", "role": "button", "nome": "Avançar"},
+    ],
+
+    # ---------- area de membros (passo 4) ----------
+    # "Criar produto" (NAO confundir com "Criar Hotmart Club"). exact evita o outro.
+    "btn_criar_produto_final": [
+        {"tipo": "role", "role": "button", "nome": "^Criar produto$"},
+        {"tipo": "texto", "texto": "^Criar produto$"},
     ],
 
     # ---------- conteudo ----------
