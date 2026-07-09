@@ -20,6 +20,7 @@ Regras de seguranca (decisoes de projeto — nao relaxar):
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime
