@@ -204,6 +204,28 @@ textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
 .chip.com-capa        { background: rgba(63,214,143,.10); color: var(--ok); }
 
 /* ============ Cards de produto ============ */
+/* placar geral da fila */
+.resumo-geral {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  background: var(--bg-card); border: 1px solid var(--borda); border-radius: var(--radius);
+  padding: 12px 18px; margin-bottom: 16px; font-size: 13px; color: var(--texto-2);
+}
+.resumo-geral.oculto { display: none; }
+.rg-item { white-space: nowrap; }
+.rg-item b { color: var(--texto); font-weight: 600; }
+.rg-item.rg-ok { color: var(--ok); }
+.rg-item.rg-alerta { color: var(--aviso); }
+.rg-item.rg-erro { color: var(--erro); font-weight: 600; }
+.rg-sep { color: var(--texto-3); }
+.rg-barra {
+  flex-basis: 100%; height: 6px; border-radius: 3px; background: var(--bg-input);
+  overflow: hidden; display: flex; margin-top: 2px;
+}
+.rg-barra > i { display: block; height: 100%; }
+.rg-barra .b-pub { background: var(--ok); }
+.rg-barra .b-rev { background: #2f9e6f; }
+.rg-barra .b-trad { background: var(--info); }
+
 .lista-produtos { display: flex; flex-direction: column; gap: 16px; }
 .vazio { text-align: center; color: var(--texto-3); padding: 60px 0; line-height: 2; }
 

@@ -246,12 +246,49 @@ async function carregarProdutos() {
 function renderProdutos() {
   const box = $("lista-produtos");
   atualizarSelectPastas();
+  renderResumoGeral();
   if (!estado.produtos.length) {
     box.innerHTML = `<div class="vazio">Nenhum produto na fila ainda.<br>
       <small>Escaneie uma pasta acima pra importar os ebooks.</small></div>`;
     return;
   }
   box.innerHTML = estado.produtos.map(renderCard).join("");
+}
+
+// Placar sempre visivel: quanto da fila inteira ja esta traduzido/revisado/publicado
+// e o que ainda falta (texto, capa) ou deu erro.
+function renderResumoGeral() {
+  const box = $("resumo-geral");
+  const prods = estado.produtos;
+  if (!prods.length) { box.classList.add("oculto"); return; }
+  let idiomas = 0, comTextos = 0, revisados = 0, publicados = 0, semCapa = 0, comErro = 0;
+  for (const p of prods) {
+    for (const i of p.idiomas) {
+      idiomas++;
+      if (i.titulo && i.descricao) comTextos++;
+      if (i.status === "publicado") { publicados++; revisados++; }
+      else if (i.status === "revisado") revisados++;
+      if (!i.capa) semCapa++;
+      if (i.status === "erro") comErro++;
+    }
+  }
+  const faltaTexto = idiomas - comTextos;
+  const pct = (n) => idiomas ? (n / idiomas * 100).toFixed(1) : 0;
+  box.classList.remove("oculto");
+  box.innerHTML = `
+    <span class="rg-item"><b>${prods.length}</b> produtos · <b>${idiomas}</b> idiomas</span>
+    <span class="rg-sep">·</span>
+    <span class="rg-item ${faltaTexto ? "rg-alerta" : "rg-ok"}">${comTextos}/${idiomas} traduzidos${faltaTexto ? ` (faltam ${faltaTexto})` : " ✓"}</span>
+    <span class="rg-sep">·</span>
+    <span class="rg-item ${revisados < idiomas ? "" : "rg-ok"}">${revisados}/${idiomas} revisados</span>
+    ${publicados ? `<span class="rg-sep">·</span><span class="rg-item rg-ok">${publicados} publicados ✓</span>` : ""}
+    ${semCapa ? `<span class="rg-sep">·</span><span class="rg-item rg-alerta">${semCapa} sem capa</span>` : ""}
+    ${comErro ? `<span class="rg-sep">·</span><span class="rg-item rg-erro">${comErro} com erro</span>` : ""}
+    <span class="rg-barra" title="azul = traduzido · verde = revisado · verde forte = publicado">
+      <i class="b-trad" style="width:${pct(comTextos - revisados)}%"></i>
+      <i class="b-rev" style="width:${pct(revisados - publicados)}%"></i>
+      <i class="b-pub" style="width:${pct(publicados)}%"></i>
+    </span>`;
 }
 
 function atualizarSelectPastas() {
@@ -264,8 +301,11 @@ function atualizarSelectPastas() {
 
 function renderCard(p) {
   const aberto = estado.abertos.has(p.id);
+  const n = p.idiomas.length;
+  const traduzidos = p.idiomas.filter((i) => i.titulo && i.descricao).length;
   const revisados = p.idiomas.filter((i) => ["revisado", "publicado"].includes(i.status)).length;
   const semCapa = p.idiomas.filter((i) => !i.capa).length;
+  const comErro = p.idiomas.filter((i) => i.status === "erro").length;
   const corpo = aberto ? renderCorpo(p) : "";
   return `
   <div class="card produto ${aberto ? "aberto" : ""}" data-pid="${p.id}">
@@ -274,8 +314,10 @@ function renderCard(p) {
       <span class="titulo-pt">${esc(p.titulo_pt)}</span>
       <span class="chip tipo">${esc(p.tipo)}</span>
       <span class="resumo">
+        ${comErro ? `<span class="chip erro">${comErro} erro</span>` : ""}
         ${semCapa ? `<span class="chip sem-capa">${semCapa} sem capa</span>` : ""}
-        <span>${revisados}/${p.idiomas.length} revisados</span>
+        <span class="${traduzidos < n ? "rg-alerta" : ""}">${traduzidos}/${n} traduzidos</span>
+        <span>${revisados}/${n} revisados</span>
       </span>
     </div>
     <div class="produto-corpo">${corpo}</div>
@@ -487,29 +529,71 @@ async function traduzirTodos(pid) {
         erros ? "erro" : "ok");
 }
 
-// Botao global: pra CADA produto, gera a descricao (se faltar) e traduz so os
-// idiomas ainda vazios — nao mexe em texto ja traduzido/revisado.
+// Semaforo simples: limita quantas chamadas ao agy rodam AO MESMO TEMPO no
+// TOTAL (somando todos os produtos). Sem isso, N produtos x 5 idiomas estouraria.
+function criarSemaforo(limite) {
+  let ativos = 0;
+  const fila = [];
+  const proximo = () => { if (fila.length && ativos < limite) { ativos++; fila.shift()(); } };
+  return {
+    async run(tarefa) {
+      await new Promise((res) => { fila.push(res); proximo(); });
+      try { return await tarefa(); }
+      finally { ativos--; proximo(); }
+    },
+  };
+}
+
+// Botao global: processa TODOS os produtos ao mesmo tempo (limitado pelo
+// semaforo global). Pra cada produto: gera a descricao (se faltar) e traduz
+// so os idiomas ainda vazios — nao mexe em texto ja traduzido/revisado.
 async function processarTudo() {
   const btn = $("btn-processar-tudo");
   if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
   btn.classList.add("ocupado"); btn.disabled = true;
+
+  const sem = criarSemaforo(TRADUCOES_SIMULTANEAS);
   let erros = 0;
-  try {
-    for (const prod of [...estado.produtos]) {
-      let p = estado.produtos.find((x) => x.id === prod.id);
-      if (!p) continue;
+
+  // marca tudo que vai ser processado (spinner) numa render so
+  for (const p of estado.produtos) {
+    if (!p.descricao_pt) estado.ocupados.add(`${p.id}:desc`);
+    for (const i of p.idiomas) {
+      if (!i.titulo || !i.descricao) estado.ocupados.add(`${p.id}:${i.codigo}`);
+    }
+  }
+  renderProdutos();
+
+  const processarProduto = async (pid) => {
+    let p = estado.produtos.find((x) => x.id === pid);
+    if (!p) return;
+    // 1) descricao PT primeiro (traducoes dependem dela)
+    if (!p.descricao_pt) {
       try {
-        if (!p.descricao_pt) {
-          await gerarDescricao(p.id);
-          p = estado.produtos.find((x) => x.id === prod.id);
-        }
-        const faltantes = p.idiomas.filter((i) => !i.titulo || !i.descricao);
-        if (faltantes.length) erros += await traduzirLote(p.id, faltantes);
-      } catch (e) {
-        erros++;
-        toast(`${p.titulo_pt}: ${e.message}`, "erro");
+        await sem.run(() => api("POST", `/api/produtos/${pid}/descricao`));
+      } catch (e) { erros++; toast(`${p.titulo_pt}: ${e.message}`, "erro"); }
+      finally { estado.ocupados.delete(`${pid}:desc`); await recarregarProduto(pid); }
+      p = estado.produtos.find((x) => x.id === pid);
+      if (!p || !p.descricao_pt) {
+        // desc falhou: tira os spinners dos idiomas desse produto
+        for (const i of (p ? p.idiomas : [])) estado.ocupados.delete(`${pid}:${i.codigo}`);
+        renderProdutos();
+        return;
       }
     }
+    // 2) traduz os idiomas ainda vazios (cada um passa pelo semaforo global)
+    const faltantes = p.idiomas.filter((i) => !i.titulo || !i.descricao);
+    await Promise.all(faltantes.map((item) =>
+      sem.run(() => api("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`))
+        .catch((e) => { erros++; toast(`${item.pais}: ${e.message}`, "erro"); })
+        .finally(async () => {
+          estado.ocupados.delete(`${pid}:${item.codigo}`);
+          await recarregarProduto(pid);
+        })));
+  };
+
+  try {
+    await Promise.all(estado.produtos.map((p) => processarProduto(p.id)));
   } finally {
     btn.classList.remove("ocupado"); btn.disabled = false;
     renderProdutos();
