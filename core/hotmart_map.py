@@ -95,13 +95,14 @@ MAPA = {
 
     # ---------- informacoes basicas ----------
     "campo_nome": [
+        {"tipo": "css", "css": "#name"},
         {"tipo": "label", "texto": "Nome do produto"},
-        {"tipo": "placeholder", "texto": "nome"},
-        {"tipo": "css", "css": "input[name='name']"},
+        {"tipo": "css", "css": "input.hot-form__input[name='name']"},
     ],
     "campo_descricao": [
+        {"tipo": "css", "css": "#description"},
         {"tipo": "label", "texto": "Descrição"},
-        {"tipo": "css", "css": "textarea"},
+        {"tipo": "css", "css": "textarea.hot-form__input"},
     ],
     "campo_idioma": [
         {"tipo": "label", "texto": "Idioma do produto"},

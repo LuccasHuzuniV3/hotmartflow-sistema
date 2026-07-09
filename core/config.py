@@ -23,7 +23,8 @@ _DEFAULTS = {
         "tamanho_max": 900,
     },
     "pastas_recentes": [],
-    "robo": {"ensaio": True},  # comeca em modo seguro ate os seletores serem calibrados
+    # robo: ensaio = modo seguro; delay_digitacao_ms = ms por tecla (anti-bot Hotmart)
+    "robo": {"ensaio": True, "delay_digitacao_ms": 45},
 }
 
 

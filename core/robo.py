@@ -40,6 +40,10 @@ MODOS = ("real", "ensaio", "simulado")
 # Delay entre etapas do modo simulado (env pra acelerar nos testes)
 _DELAY_SIMULADO = float(os.environ.get("HOTMARTFLOW_SIM_DELAY", "0.8"))
 
+# Delay (ms) POR CARACTERE ao digitar nos campos — a Hotmart bloqueia
+# preenchimento instantaneo (anti-bot). Configuravel na aba Config.
+_DELAY_DIGITACAO = int(os.environ.get("HOTMARTFLOW_DELAY_DIGITACAO", "45"))
+
 
 class RoboError(Exception):
     pass
@@ -258,10 +262,11 @@ def _executar_simulado(job: Job) -> None:
 class Tela:
     """Wrapper fino do Playwright: acha elementos pelo MAPA e tira screenshots."""
 
-    def __init__(self, page, job: Job, pasta_shots: Path):
+    def __init__(self, page, job: Job, pasta_shots: Path, delay_digitacao: int = _DELAY_DIGITACAO):
         self.page = page
         self.job = job
         self.pasta = pasta_shots
+        self.delay_digitacao = max(0, int(delay_digitacao))
         self._n = 0
 
     def shot(self, nome: str) -> None:
@@ -301,22 +306,50 @@ class Tela:
         self._localizar(chave).click()
 
     def preencher(self, chave: str, valor: str) -> None:
+        """Digita LETRA POR LETRA com delay — a Hotmart reseta o form se o
+        preenchimento for instantaneo (fill). press_sequentially simula humano."""
         campo = self._localizar(chave)
         campo.click()
-        campo.fill(valor)
+        self.page.wait_for_timeout(300)
+        try:
+            campo.fill("")  # limpa o que tiver
+        except Exception:
+            pass
+        try:
+            campo.press_sequentially(valor, delay=self.delay_digitacao)
+        except Exception:
+            campo.type(valor, delay=self.delay_digitacao)  # fallback API antiga
+        self.page.wait_for_timeout(250)
 
     def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
-        """Dropdowns da Hotmart: clica no campo, digita e escolhe a opcao."""
+        """Dropdown custom da Hotmart (<hot-select>/<hot-select-option>): clica pra
+        ABRIR, espera a opcao ficar VISIVEL e clica nela (a opcao fica 'hidden'
+        enquanto o dropdown esta fechado)."""
         import re
         campo = self._localizar(chave_campo)
-        campo.click()
-        try:
-            campo.fill(texto_opcao)
-        except Exception:
-            pass  # alguns dropdowns nao aceitam digitacao
-        opcao = self.page.get_by_text(re.compile(re.escape(texto_opcao), re.I))
-        opcao.first.wait_for(state="visible", timeout=8000)
-        opcao.first.click()
+        campo.click()               # abre o dropdown
+        self.page.wait_for_timeout(600)
+        alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
+        tentativas = [
+            lambda: self.page.locator("hot-select-option").filter(has_text=alvo),
+            lambda: self.page.get_by_role("option", name=texto_opcao, exact=True),
+            lambda: self.page.locator("hot-select-option", has_text=texto_opcao),
+            lambda: self.page.get_by_text(alvo),
+        ]
+        for fabricar in tentativas:
+            try:
+                opcao = fabricar().first
+                opcao.wait_for(state="visible", timeout=4000)
+                opcao.click()
+                self.page.wait_for_timeout(300)
+                return
+            except Exception:
+                continue
+        self.shot(f"erro_opcao_{texto_opcao}")
+        raise RoboError(
+            f"Não consegui abrir/selecionar '{texto_opcao}' no campo {chave_campo}. "
+            "Print salvo em data/publicacoes."
+        )
 
     def upload(self, chave: str, arquivos: str | list[str]) -> None:
         if isinstance(arquivos, str):
@@ -440,7 +473,8 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
         browser, page = _conectar(p)  # conecta na janela ja aberta e logada
         try:
             page.set_default_timeout(20000)
-            tela = Tela(page, job, pasta_shots)
+            delay_dig = int(s.get("robo", {}).get("delay_digitacao_ms", _DELAY_DIGITACAO))
+            tela = Tela(page, job, pasta_shots, delay_digitacao=delay_dig)
 
             # ---- 1. abrir direto o formulario de eBook novo + checar login ----
             job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo na Hotmart...")
