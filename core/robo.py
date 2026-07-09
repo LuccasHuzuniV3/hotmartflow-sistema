@@ -332,13 +332,20 @@ class Tela:
 
 
 def _abrir_navegador(p):
-    """Perfil persistente (login feito 1x na mao). Tenta Chrome > Edge > Chromium."""
+    """Perfil persistente PROPRIO do robo (data/hotmart_profile), separado do
+    Chrome pessoal. O login na Hotmart e feito UMA VEZ aqui e fica salvo — nas
+    proximas vezes ja abre logado. As flags evitam a tela de 'escolher perfil'."""
     PASTA_PERFIL.mkdir(parents=True, exist_ok=True)
     opts = {
         "user_data_dir": str(PASTA_PERFIL),
         "headless": False,
         "viewport": {"width": 1366, "height": 850},
-        "args": ["--disable-blink-features=AutomationControlled"],
+        "args": [
+            "--disable-blink-features=AutomationControlled",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--profile-directory=Default",
+        ],
     }
     for canal in ("chrome", "msedge", None):
         try:

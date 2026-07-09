@@ -604,6 +604,90 @@ async function processarTudo() {
 
 $("btn-processar-tudo").addEventListener("click", processarTudo);
 
+// Botao global: marca como revisado TODOS os idiomas (de todos os produtos)
+// que ja tem titulo e descricao. Nao mexe em quem falta texto.
+async function revisarTudoGeral() {
+  const btn = $("btn-revisar-tudo");
+  if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
+  btn.classList.add("ocupado"); btn.disabled = true;
+  let marcados = 0, semTexto = 0;
+  try {
+    for (const p of estado.produtos) {
+      const prontos = p.idiomas.filter((i) =>
+        i.titulo && i.descricao && i.status !== "revisado" && i.status !== "publicado");
+      semTexto += p.idiomas.filter((i) => !i.titulo || !i.descricao).length;
+      await Promise.all(prontos.map((i) =>
+        api("PATCH", `/api/produtos/${p.id}/idiomas/${i.codigo}`, { status: "revisado" })
+          .then(() => { marcados++; }).catch(() => {})));
+      if (prontos.length) await recarregarProduto(p.id);
+    }
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false; renderProdutos();
+  }
+  toast(`${marcados} idioma(s) revisados` + (semTexto ? ` · ${semTexto} sem texto ficaram de fora` : " ✓"),
+        semTexto ? "" : "ok");
+}
+$("btn-revisar-tudo").addEventListener("click", revisarTudoGeral);
+
+// Botao global: publica um a um todos os idiomas REVISADOS de todos os produtos.
+// Cada publicacao passa pelo robo normal (com as pausas de código 2FA e
+// confirmação); a fila só avança quando a atual termina.
+async function publicarTodos() {
+  if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
+  const modo = $("chk-ensaio").checked ? "ensaio" : "real";
+  const fila = [];
+  for (const p of estado.produtos) {
+    for (const i of p.idiomas) {
+      if (i.status === "revisado") fila.push({ pid: p.id, codigo: i.codigo, pais: i.pais, titulo: p.titulo_pt });
+    }
+  }
+  if (!fila.length) { toast("Nenhum idioma revisado pra publicar.", "erro"); return; }
+  const msg = modo === "real"
+    ? `Publicar DE VERDADE ${fila.length} cadastro(s) na Hotmart, um a um?\n\nVocê ainda digita cada código e confirma cada finalização.`
+    : `Rodar ENSAIO de ${fila.length} cadastro(s), um a um? (nada é enviado)`;
+  if (!confirm(msg)) return;
+
+  const btn = $("btn-publicar-tudo");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  let feitos = 0, pulados = 0;
+  try {
+    for (let n = 0; n < fila.length; n++) {
+      const item = fila[n];
+      // re-checa: o item ainda está 'revisado'? (pode ter mudado)
+      let prod = null;
+      try { prod = await api("GET", `/api/produtos/${item.pid}`); } catch (_) {}
+      const at = prod && prod.idiomas.find((i) => i.codigo === item.codigo);
+      if (!at || at.status !== "revisado") { pulados++; continue; }
+
+      toast(`Publicando ${n + 1} de ${fila.length}: ${item.titulo} — ${item.pais}`, "");
+      try {
+        await api("POST", `/api/produtos/${item.pid}/publicar/${item.codigo}`, { modo });
+      } catch (e) { toast(`${item.pais}: ${e.message}`, "erro"); pulados++; continue; }
+
+      iniciarPollPublicacao();
+      const fim = await aguardarFimPublicacao();
+      if (fim === "cancelado") { toast("Fila de publicação cancelada.", "aviso"); break; }
+      feitos++;
+    }
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+    await carregarProdutos();
+  }
+  toast(`Fila concluída: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
+}
+$("btn-publicar-tudo").addEventListener("click", publicarTodos);
+
+// Espera a publicação atual chegar num estado terminal (fora das pausas humanas).
+async function aguardarFimPublicacao() {
+  while (true) {
+    await new Promise((r) => setTimeout(r, 1000));
+    let r;
+    try { r = await api("GET", "/api/publicacao"); } catch (_) { continue; }
+    if (!r.job) return "concluido";
+    if (!r.ativo) return r.job.estado; // concluido | erro | cancelado
+  }
+}
+
 async function revisarTodos(pid) {
   const p = estado.produtos.find((x) => x.id === pid);
   if (!p) return;
