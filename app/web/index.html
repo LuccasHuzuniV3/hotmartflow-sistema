@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HotmartFlow</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <span class="marca-icone">◈</span>
+      <span class="marca-nome">Hotmart<b>Flow</b></span>
+    </div>
+    <nav class="abas">
+      <button class="aba ativa" data-aba="produtos">Produtos</button>
+      <button class="aba" data-aba="config">Config</button>
+    </nav>
+    <div class="status-key" id="status-key" title="Status da API key">
+      <span class="dot"></span><span id="status-key-texto">verificando…</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ ABA PRODUTOS ============ -->
+    <section id="tab-produtos" class="tab visivel">
+      <div class="scan-bar card">
+        <label class="scan-label">Pasta com os ebooks — <code>Título&nbsp;-&nbsp;País.pdf</code> (tipo opcional: <code>Título&nbsp;-&nbsp;Order&nbsp;Bump&nbsp;-&nbsp;País.pdf</code>)</label>
+        <div class="scan-linha">
+          <input id="scan-pasta" type="text" placeholder="C:\HOTMART\rede\FILIPINAS" spellcheck="false">
+          <button id="btn-escolher-pasta" class="btn" title="Escolher a pasta pelo Windows">📁 Escolher…</button>
+          <button id="btn-escanear" class="btn primario">Escanear</button>
+        </div>
+        <div id="scan-resultado" class="scan-resultado oculto"></div>
+      </div>
+
+      <div class="robo-bar">
+        <span class="robo-titulo">🤖 Robô Hotmart</span>
+        <label class="robo-ensaio" title="No ensaio o robô preenche a 1ª tela e PARA — nada é enviado. Desligue só quando os seletores estiverem calibrados.">
+          <input type="checkbox" id="chk-ensaio" checked> modo ensaio (seguro)
+        </label>
+        <div class="robo-acoes">
+          <button id="btn-processar-tudo" class="btn mini primario"
+            title="Pra cada produto: gera a descrição (se faltar) e traduz os idiomas que ainda estão vazios">⚡ Gerar e traduzir tudo</button>
+          <button id="btn-login-hotmart" class="btn mini">Abrir Hotmart (login)</button>
+        </div>
+      </div>
+
+      <div class="card titulos-card">
+        <div class="titulos-cab" id="titulos-toggle">
+          <span class="seta">▸</span> 📋 Títulos em português — colar a lista do Discord
+        </div>
+        <div id="titulos-corpo" class="titulos-corpo oculto">
+          <div class="titulos-linha">
+            <label>Aplicar nos produtos da pasta:</label>
+            <select id="titulos-pasta"></select>
+          </div>
+          <textarea id="titulos-texto" rows="7" spellcheck="false"
+placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; ... (ignorado — bônus não tem título no cadastro)&#10;ORDEM BUMP 1; OS PRINCÍPIOS DE UMA MENTE GENIAL...&#10;OPSELL 1 ; O SEGREDO DO UNIVERSO POR TRÁS DA INVEJA..."></textarea>
+          <div class="pub-acao">
+            <button id="btn-aplicar-titulos" class="btn mini primario">Aplicar títulos</button>
+            <small>PRINCIPAL → produto principal · ORDEM BUMP n → bump n · OPSELL n → upsell n · linhas de BONUS/EXTRA são ignoradas</small>
+          </div>
+        </div>
+      </div>
+
+      <div id="painel-pub" class="card painel-pub oculto">
+        <div class="pub-cab">
+          <span id="pub-titulo" class="pub-nome"></span>
+          <span id="pub-modo" class="chip tipo"></span>
+          <span id="pub-estado" class="chip publicando"></span>
+        </div>
+        <div id="pub-log" class="pub-log"></div>
+        <div id="pub-acao-2fa" class="pub-acao oculto">
+          <input id="pub-codigo" type="text" placeholder="Código de 6 dígitos do Gmail" maxlength="6">
+          <button id="btn-enviar-codigo" class="btn primario">Enviar código</button>
+        </div>
+        <div id="pub-acao-confirmar" class="pub-acao oculto">
+          <button id="btn-confirmar-pub" class="btn primario">✅ Confirmar: Finalizar Cadastro na Hotmart</button>
+        </div>
+        <div class="pub-acao">
+          <button id="btn-cancelar-pub" class="btn mini perigo">Cancelar publicação</button>
+          <button id="btn-fechar-pub" class="btn mini oculto">Fechar</button>
+        </div>
+      </div>
+
+      <div id="lista-produtos" class="lista-produtos">
+        <div class="vazio" id="vazio-produtos">
+          Nenhum produto na fila ainda.<br>
+          <small>Escaneie uma pasta acima pra importar os ebooks.</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ABA CONFIG ============ -->
+    <section id="tab-config" class="tab">
+      <div class="card config-card">
+        <h2>Inteligência artificial <small>(gera descrição e traduções)</small></h2>
+        <div class="campo">
+          <label>Provider</label>
+          <select id="cfg-provider">
+            <option value="agy">agy — Antigravity CLI (conta Google, igual ao EbookFlow)</option>
+            <option value="openai">OpenAI API (paga por uso)</option>
+          </select>
+        </div>
+        <div class="campo" id="grupo-agy">
+          <label>Modelo do agy <small>(vazio = padrão; confira nomes com "agy models")</small></label>
+          <input id="cfg-agy-model" type="text" placeholder="padrão do agy" spellcheck="false">
+        </div>
+        <div id="grupo-openai" class="oculto-cfg">
+          <div class="campo">
+            <label>API key da OpenAI</label>
+            <input id="cfg-api-key" type="password" placeholder="sk-..." spellcheck="false">
+          </div>
+          <div class="campo">
+            <label>Modelo</label>
+            <input id="cfg-model" type="text" placeholder="gpt-4o" spellcheck="false">
+          </div>
+        </div>
+      </div>
+
+      <div class="card config-card">
+        <h2>Preços por tipo <small>(USD)</small></h2>
+        <div id="cfg-precos" class="precos-grid"></div>
+      </div>
+
+      <div class="card config-card">
+        <h2>Descrição de venda</h2>
+        <div class="campo">
+          <label>Tom</label>
+          <input id="cfg-tom" type="text">
+        </div>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>Tamanho mín. (caracteres)</label>
+            <input id="cfg-tam-min" type="number" min="100">
+          </div>
+          <div class="campo">
+            <label>Tamanho máx. (caracteres)</label>
+            <input id="cfg-tam-max" type="number" min="200">
+          </div>
+        </div>
+      </div>
+
+      <div class="card config-card">
+        <h2>Coprodução <small>(usado na Fase B — robô)</small></h2>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>E-mail do coprodutor</label>
+            <input id="cfg-coprod-email" type="text" spellcheck="false">
+          </div>
+          <div class="campo">
+            <label>% de comissão</label>
+            <input id="cfg-coprod-pct" type="number" min="1" max="99">
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-salvar-config" class="btn primario btn-largo">Salvar configurações</button>
+      <div id="config-feedback" class="feedback"></div>
+
+      <div class="card config-card update-card">
+        <h2>Atualização do sistema</h2>
+        <div class="update-linha">
+          <span id="update-status">Versão local: —</span>
+          <button id="btn-atualizar" class="btn">Verificar atualizações</button>
+        </div>
+        <div id="update-log" class="feedback"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

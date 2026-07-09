@@ -1,0 +1,800 @@
+/* ============ HotmartFlow — UI ============ */
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Estado
+// ---------------------------------------------------------------------------
+const estado = {
+  settings: null,
+  produtos: [],
+  scan: null,
+  scanPasta: "",
+  abertos: new Set(),      // ids de produtos com card expandido
+  ocupados: new Set(),     // chaves "pid" ou "pid:codigo" com operacao em andamento
+};
+
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+async function api(metodo, url, body) {
+  const opts = { method: metodo, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = `Erro ${r.status}`;
+    try { msg = (await r.json()).detail || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+let toastTimer = null;
+function toast(msg, tipo = "") {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = `toast mostrar ${tipo}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.className = "toast"), 4200);
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+const ROTULO_STATUS = {
+  rascunho: "rascunho",
+  textos_gerados: "textos gerados",
+  revisado: "revisado ✓",
+  publicando: "publicando…",
+  publicado: "publicado ✓",
+  erro: "erro",
+};
+
+// ---------------------------------------------------------------------------
+// Abas
+// ---------------------------------------------------------------------------
+document.querySelectorAll(".aba").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".aba").forEach((b) => b.classList.remove("ativa"));
+    btn.classList.add("ativa");
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("visivel"));
+    $(`tab-${btn.dataset.aba}`).classList.add("visivel");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Status da API key
+// ---------------------------------------------------------------------------
+async function atualizarStatusKey() {
+  try {
+    const s = await api("GET", "/api/status");
+    const box = $("status-key");
+    box.className = `status-key ${s.pronto ? "ok" : "falta"}`;
+    if (s.pronto) {
+      $("status-key-texto").textContent = s.provider === "agy" ? `agy ok (${s.detalhe})` : "OpenAI ok";
+    } else {
+      $("status-key-texto").textContent = s.detalhe || "IA não configurada";
+    }
+  } catch (_) { /* servidor caindo — ignora */ }
+}
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+function atualizarGruposProvider() {
+  const prov = $("cfg-provider").value;
+  $("grupo-agy").classList.toggle("oculto-cfg", prov !== "agy");
+  $("grupo-openai").classList.toggle("oculto-cfg", prov !== "openai");
+}
+
+$("cfg-provider").addEventListener("change", atualizarGruposProvider);
+
+async function carregarConfig() {
+  estado.settings = await api("GET", "/api/settings");
+  const s = estado.settings;
+  $("cfg-provider").value = s.provider || "agy";
+  $("cfg-agy-model").value = (s.agy && s.agy.model) || "";
+  $("cfg-api-key").value = s.openai.api_key;
+  $("cfg-model").value = s.openai.model;
+  atualizarGruposProvider();
+  $("cfg-tom").value = s.descricao.tom;
+  $("cfg-tam-min").value = s.descricao.tamanho_min;
+  $("cfg-tam-max").value = s.descricao.tamanho_max;
+  $("cfg-coprod-email").value = s.coproducao.email;
+  $("cfg-coprod-pct").value = s.coproducao.percentual;
+
+  const grid = $("cfg-precos");
+  grid.innerHTML = Object.entries(s.precos).map(([tipo, preco]) => `
+    <div class="campo">
+      <label>${esc(tipo)}</label>
+      <input type="number" step="0.10" min="0" data-preco-tipo="${esc(tipo)}" value="${preco}">
+    </div>`).join("");
+
+  // deixa o campo ja preenchido com a ultima pasta usada (sem lista de historico)
+  const ultima = (s.pastas_recentes || [])[0];
+  if (ultima && !$("scan-pasta").value) $("scan-pasta").value = ultima;
+}
+
+$("btn-salvar-config").addEventListener("click", async () => {
+  const precos = {};
+  document.querySelectorAll("[data-preco-tipo]").forEach((inp) => {
+    precos[inp.dataset.precoTipo] = parseFloat(inp.value || "0");
+  });
+  const patch = {
+    provider: $("cfg-provider").value,
+    agy: { model: $("cfg-agy-model").value.trim() },
+    openai: { api_key: $("cfg-api-key").value.trim(), model: $("cfg-model").value.trim() || "gpt-4o" },
+    precos,
+    descricao: {
+      tom: $("cfg-tom").value.trim(),
+      tamanho_min: parseInt($("cfg-tam-min").value || "400", 10),
+      tamanho_max: parseInt($("cfg-tam-max").value || "900", 10),
+    },
+    coproducao: {
+      email: $("cfg-coprod-email").value.trim(),
+      percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
+    },
+  };
+  try {
+    estado.settings = await api("POST", "/api/settings", patch);
+    $("config-feedback").textContent = "Configurações salvas ✓";
+    setTimeout(() => ($("config-feedback").textContent = ""), 3000);
+    atualizarStatusKey();
+  } catch (e) { toast(e.message, "erro"); }
+});
+
+// ---------------------------------------------------------------------------
+// Scan / importação
+// ---------------------------------------------------------------------------
+$("btn-escanear").addEventListener("click", escanear);
+$("scan-pasta").addEventListener("keydown", (e) => { if (e.key === "Enter") escanear(); });
+
+$("btn-escolher-pasta").addEventListener("click", async () => {
+  const btn = $("btn-escolher-pasta");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  try {
+    const r = await api("POST", "/api/escolher-pasta");
+    if (r.pasta) {
+      $("scan-pasta").value = r.pasta;
+      await escanear(); // ja escaneia direto — um clique a menos
+    }
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+  }
+});
+
+async function escanear() {
+  const pasta = $("scan-pasta").value.trim();
+  if (!pasta) { toast("Informe o caminho da pasta.", "erro"); return; }
+  const btn = $("btn-escanear");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  try {
+    estado.scan = await api("POST", "/api/scan", { pasta });
+    estado.scanPasta = pasta;
+    renderScan();
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+  }
+}
+
+function renderScan() {
+  const box = $("scan-resultado");
+  const { grupos, ignorados } = estado.scan;
+  if (!grupos.length && !ignorados.length) {
+    box.innerHTML = `<div class="scan-ignorados">Nenhum PDF na convenção encontrado nessa pasta.</div>`;
+    box.classList.remove("oculto");
+    return;
+  }
+  const linhas = grupos.map((g, n) => `
+    <div class="scan-grupo ${g.ja_importado ? "ja-importado" : ""}">
+      <input type="checkbox" data-scan-idx="${n}" ${g.ja_importado ? "" : "checked"}>
+      <span class="titulo">${esc(g.titulo)}</span>
+      <span class="chip tipo">${esc(g.tipo)}</span>
+      <span class="meta">${g.idiomas.length} idioma(s)
+        · ${g.idiomas.filter((i) => i.capa).length} capa(s)
+        ${g.ja_importado ? " · já importado" : ""}</span>
+    </div>`).join("");
+  const avisos = ignorados.length
+    ? `<div class="scan-ignorados">⚠ ${ignorados.length} arquivo(s) ignorado(s): ${
+        ignorados.map((i) => `${esc(i.arquivo)} (${esc(i.motivo)})`).join("; ")}</div>`
+    : "";
+  box.innerHTML = `${linhas}${avisos}
+    <div class="scan-acoes">
+      <button id="btn-importar" class="btn primario">Importar selecionados</button>
+      <button id="btn-fechar-scan" class="btn">Fechar</button>
+    </div>`;
+  box.classList.remove("oculto");
+  $("btn-importar").addEventListener("click", importarSelecionados);
+  $("btn-fechar-scan").addEventListener("click", () => box.classList.add("oculto"));
+}
+
+async function importarSelecionados() {
+  const marcados = [...document.querySelectorAll("[data-scan-idx]:checked")]
+    .map((cb) => estado.scan.grupos[parseInt(cb.dataset.scanIdx, 10)])
+    .map((g) => ({ titulo: g.titulo, tipo: g.tipo }));
+  if (!marcados.length) { toast("Nenhum grupo selecionado.", "erro"); return; }
+  const btn = $("btn-importar");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  try {
+    const r = await api("POST", "/api/produtos", { pasta: estado.scanPasta, grupos: marcados });
+    toast(`${r.criados.length} produto(s) importado(s) ✓`, "ok");
+    $("scan-resultado").classList.add("oculto");
+    r.criados.forEach((p) => estado.abertos.add(p.id));
+    await carregarProdutos();
+  } catch (e) {
+    toast(e.message, "erro");
+    btn.classList.remove("ocupado"); btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lista de produtos
+// ---------------------------------------------------------------------------
+async function carregarProdutos() {
+  estado.produtos = await api("GET", "/api/produtos");
+  renderProdutos();
+}
+
+function renderProdutos() {
+  const box = $("lista-produtos");
+  atualizarSelectPastas();
+  if (!estado.produtos.length) {
+    box.innerHTML = `<div class="vazio">Nenhum produto na fila ainda.<br>
+      <small>Escaneie uma pasta acima pra importar os ebooks.</small></div>`;
+    return;
+  }
+  box.innerHTML = estado.produtos.map(renderCard).join("");
+}
+
+function atualizarSelectPastas() {
+  const sel = $("titulos-pasta");
+  const atual = sel.value;
+  const pastas = [...new Set(estado.produtos.map((p) => p.pasta))];
+  sel.innerHTML = pastas.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+  if (pastas.includes(atual)) sel.value = atual;
+}
+
+function renderCard(p) {
+  const aberto = estado.abertos.has(p.id);
+  const revisados = p.idiomas.filter((i) => ["revisado", "publicado"].includes(i.status)).length;
+  const semCapa = p.idiomas.filter((i) => !i.capa).length;
+  const corpo = aberto ? renderCorpo(p) : "";
+  return `
+  <div class="card produto ${aberto ? "aberto" : ""}" data-pid="${p.id}">
+    <div class="produto-cab" data-toggle="${p.id}">
+      <span class="seta">▸</span>
+      <span class="titulo-pt">${esc(p.titulo_pt)}</span>
+      <span class="chip tipo">${esc(p.tipo)}</span>
+      <span class="resumo">
+        ${semCapa ? `<span class="chip sem-capa">${semCapa} sem capa</span>` : ""}
+        <span>${revisados}/${p.idiomas.length} revisados</span>
+      </span>
+    </div>
+    <div class="produto-corpo">${corpo}</div>
+  </div>`;
+}
+
+function renderCorpo(p) {
+  const ocupadoDesc = estado.ocupados.has(`${p.id}:desc`);
+  const ocupadoTodos = estado.ocupados.has(`${p.id}:todos`);
+  const todosRevisados = p.idiomas.every((i) => i.status === "revisado");
+  const semCapa = p.idiomas.filter((i) => !i.capa).length;
+  const linhas = p.idiomas.map((i) => renderLinhaIdioma(p, i)).join("");
+  return `
+  <div class="bloco-pt">
+    <div class="linha-acoes">
+      <button class="btn mini primario ${ocupadoDesc ? "ocupado" : ""}"
+              data-acao="gerar-desc" data-pid="${p.id}" ${ocupadoDesc ? "disabled" : ""}>
+        ${p.descricao_pt ? "Regerar descrição (PT)" : "Gerar descrição (PT)"}</button>
+      <button class="btn mini ${ocupadoTodos ? "ocupado" : ""}"
+              data-acao="traduzir-todos" data-pid="${p.id}"
+              ${ocupadoTodos || !p.descricao_pt ? "disabled" : ""}>Traduzir todos</button>
+      <button class="btn mini" data-acao="revisar-todos" data-pid="${p.id}">
+        ${todosRevisados ? "Desmarcar todos" : "Revisar todos ✓"}</button>
+      ${semCapa ? `<button class="btn mini" data-acao="detectar-capas" data-pid="${p.id}"
+        title="Reprocura imagens com o mesmo nome dos PDFs na pasta">Detectar capas (${semCapa} faltando)</button>` : ""}
+      <button class="btn mini perigo" data-acao="excluir" data-pid="${p.id}">Excluir</button>
+    </div>
+    <label>Descrição de venda (PT) — base pras traduções, edite à vontade:</label>
+    <textarea data-campo-produto="descricao_pt" data-pid="${p.id}"
+      placeholder="Clique em 'Gerar descrição (PT)' ou escreva aqui...">${esc(p.descricao_pt)}</textarea>
+  </div>
+  <table class="tabela-idiomas">
+    <thead><tr>
+      <th>País</th><th>Título e descrição traduzidos</th><th>Preço</th>
+      <th>Capa</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`;
+}
+
+function renderLinhaIdioma(p, i) {
+  const chave = `${p.id}:${i.codigo}`;
+  const ocupado = estado.ocupados.has(chave);
+  const revisado = i.status === "revisado";
+  const anexos = i.anexos || [];
+  return `
+  <tr>
+    <td class="td-pais">${esc(i.pais)}
+      ${anexos.length ? `<div class="anexos-badge" title="Sobem junto:\n${esc(anexos.map(a => a.nome).join("\n"))}">+${anexos.length} anexo(s)</div>` : ""}</td>
+    <td class="td-textos">
+      <input type="text" placeholder="Título traduzido"
+        data-campo-item="titulo" data-pid="${p.id}" data-codigo="${i.codigo}" value="${esc(i.titulo)}">
+      <textarea placeholder="Descrição traduzida"
+        data-campo-item="descricao" data-pid="${p.id}" data-codigo="${i.codigo}">${esc(i.descricao)}</textarea>
+      ${i.erro ? `<div class="linha-erro">⚠ ${esc(i.erro)}</div>` : ""}
+    </td>
+    <td class="td-preco">
+      <input type="number" step="0.10" min="0"
+        data-campo-item="preco" data-pid="${p.id}" data-codigo="${i.codigo}" value="${i.preco}">
+    </td>
+    <td>${i.capa
+      ? `<span class="chip com-capa" title="${esc(i.capa)}">✓</span>`
+      : `<span class="chip sem-capa">falta</span>`}
+      <button class="btn mini btn-capa" data-acao="escolher-capa" data-pid="${p.id}"
+        data-codigo="${i.codigo}" title="${i.capa ? "Trocar a imagem da capa" : "Escolher a imagem da capa"}">📁</button></td>
+    <td class="td-status"><span class="chip ${esc(i.status)}">${ROTULO_STATUS[i.status] || esc(i.status)}</span>
+      ${i.erro ? `<div class="linha-erro" title="${esc(i.erro)}">⚠</div>` : ""}</td>
+    <td class="td-acoes">
+      ${i.status === "publicando" ? `<span class="chip publicando">robô em ação…</span>` : `
+      <button class="btn mini ${ocupado ? "ocupado" : ""}" ${ocupado ? "disabled" : ""}
+        data-acao="traduzir" data-pid="${p.id}" data-codigo="${i.codigo}">Traduzir</button>
+      <button class="btn mini" data-acao="revisado" data-pid="${p.id}" data-codigo="${i.codigo}">
+        ${revisado ? "Desmarcar" : "Revisado ✓"}</button>
+      ${revisado || i.status === "erro" ? `
+      <button class="btn mini primario" data-acao="publicar" data-pid="${p.id}" data-codigo="${i.codigo}">Publicar 🚀</button>` : ""}`}
+    </td>
+  </tr>`;
+}
+
+// ---------------------------------------------------------------------------
+// Ações (delegação de eventos)
+// ---------------------------------------------------------------------------
+$("lista-produtos").addEventListener("click", async (e) => {
+  const toggle = e.target.closest("[data-toggle]");
+  if (toggle) {
+    const pid = toggle.dataset.toggle;
+    estado.abertos.has(pid) ? estado.abertos.delete(pid) : estado.abertos.add(pid);
+    renderProdutos();
+    return;
+  }
+  const btn = e.target.closest("[data-acao]");
+  if (!btn || btn.disabled) return;
+  const { acao, pid, codigo } = btn.dataset;
+  try {
+    if (acao === "gerar-desc") await gerarDescricao(pid);
+    else if (acao === "traduzir") await traduzirIdioma(pid, codigo);
+    else if (acao === "traduzir-todos") await traduzirTodos(pid);
+    else if (acao === "revisado") await alternarRevisado(pid, codigo);
+    else if (acao === "revisar-todos") await revisarTodos(pid);
+    else if (acao === "publicar") await publicarIdioma(pid, codigo);
+    else if (acao === "escolher-capa") await escolherCapa(pid, codigo, btn);
+    else if (acao === "detectar-capas") await detectarCapas(pid);
+    else if (acao === "excluir") await excluirProduto(pid);
+  } catch (err) { await tratarErroAcao(err); }
+});
+
+// Produto sumiu do disco (excluido em outra janela/sessao)? Recarrega a lista
+// pra remover o card fantasma em vez de deixar o usuario preso no erro.
+async function tratarErroAcao(err) {
+  toast(err.message, "erro");
+  if (/nao encontrado/i.test(err.message)) {
+    await carregarProdutos();
+  }
+}
+
+// edicao inline (dispara no blur/change)
+$("lista-produtos").addEventListener("change", async (e) => {
+  const alvo = e.target;
+  try {
+    if (alvo.dataset.campoProduto) {
+      await api("PATCH", `/api/produtos/${alvo.dataset.pid}`,
+        { [alvo.dataset.campoProduto]: alvo.value });
+      await recarregarProduto(alvo.dataset.pid);
+    } else if (alvo.dataset.campoItem) {
+      const campo = alvo.dataset.campoItem;
+      const valor = campo === "preco" ? parseFloat(alvo.value || "0") : alvo.value;
+      await api("PATCH", `/api/produtos/${alvo.dataset.pid}/idiomas/${alvo.dataset.codigo}`,
+        { [campo]: valor });
+      await recarregarProduto(alvo.dataset.pid);
+    }
+  } catch (err) { await tratarErroAcao(err); }
+});
+
+async function recarregarProduto(pid) {
+  let atualizado;
+  try {
+    atualizado = await api("GET", `/api/produtos/${pid}`);
+  } catch (e) {
+    if (/nao encontrado/i.test(e.message)) { await carregarProdutos(); return; }
+    throw e;
+  }
+  const n = estado.produtos.findIndex((p) => p.id === pid);
+  if (n >= 0) estado.produtos[n] = atualizado;
+  renderProdutos();
+}
+
+async function gerarDescricao(pid) {
+  estado.ocupados.add(`${pid}:desc`);
+  renderProdutos();
+  try {
+    await api("POST", `/api/produtos/${pid}/descricao`);
+    toast("Descrição gerada ✓", "ok");
+  } finally {
+    estado.ocupados.delete(`${pid}:desc`);
+    await recarregarProduto(pid);
+  }
+}
+
+async function traduzirIdioma(pid, codigo) {
+  estado.ocupados.add(`${pid}:${codigo}`);
+  renderProdutos();
+  try {
+    await api("POST", `/api/produtos/${pid}/traduzir/${codigo}`);
+  } finally {
+    estado.ocupados.delete(`${pid}:${codigo}`);
+    await recarregarProduto(pid);
+  }
+}
+
+// Quantas traducoes rodam AO MESMO TEMPO. Cada chamada do agy abre um processo
+// node — sem limite, 19 idiomas de uma vez pesam a maquina e arriscam EMFILE.
+const TRADUCOES_SIMULTANEAS = 5;
+
+async function traduzirLote(pid, itens) {
+  const fila = [...itens];
+  let erros = 0;
+  fila.forEach((i) => estado.ocupados.add(`${pid}:${i.codigo}`));
+  renderProdutos();
+
+  const trabalhador = async () => {
+    while (fila.length) {
+      const item = fila.shift();
+      try {
+        await api("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`);
+      } catch (e) {
+        erros++;
+        toast(`${item.pais}: ${e.message}`, "erro");
+      } finally {
+        estado.ocupados.delete(`${pid}:${item.codigo}`);
+        await recarregarProduto(pid);
+      }
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(TRADUCOES_SIMULTANEAS, fila.length) },
+    () => trabalhador(),
+  ));
+  return erros;
+}
+
+async function traduzirTodos(pid) {
+  const p = estado.produtos.find((x) => x.id === pid);
+  if (!p || !p.descricao_pt) { toast("Gere a descrição em PT primeiro.", "erro"); return; }
+  estado.ocupados.add(`${pid}:todos`);
+  const erros = await traduzirLote(pid, [...p.idiomas]);
+  estado.ocupados.delete(`${pid}:todos`);
+  renderProdutos();
+  toast(erros ? `Tradução concluída com ${erros} erro(s).` : "Todos os idiomas traduzidos ✓",
+        erros ? "erro" : "ok");
+}
+
+// Botao global: pra CADA produto, gera a descricao (se faltar) e traduz so os
+// idiomas ainda vazios — nao mexe em texto ja traduzido/revisado.
+async function processarTudo() {
+  const btn = $("btn-processar-tudo");
+  if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
+  btn.classList.add("ocupado"); btn.disabled = true;
+  let erros = 0;
+  try {
+    for (const prod of [...estado.produtos]) {
+      let p = estado.produtos.find((x) => x.id === prod.id);
+      if (!p) continue;
+      try {
+        if (!p.descricao_pt) {
+          await gerarDescricao(p.id);
+          p = estado.produtos.find((x) => x.id === prod.id);
+        }
+        const faltantes = p.idiomas.filter((i) => !i.titulo || !i.descricao);
+        if (faltantes.length) erros += await traduzirLote(p.id, faltantes);
+      } catch (e) {
+        erros++;
+        toast(`${p.titulo_pt}: ${e.message}`, "erro");
+      }
+    }
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+    renderProdutos();
+  }
+  toast(erros ? `Processamento concluído com ${erros} erro(s).` : "Tudo gerado e traduzido ✓",
+        erros ? "erro" : "ok");
+}
+
+$("btn-processar-tudo").addEventListener("click", processarTudo);
+
+async function revisarTodos(pid) {
+  const p = estado.produtos.find((x) => x.id === pid);
+  if (!p) return;
+
+  const todosRevisados = p.idiomas.every((i) => i.status === "revisado");
+  if (todosRevisados) {
+    await Promise.all(p.idiomas.map((i) =>
+      api("PATCH", `/api/produtos/${pid}/idiomas/${i.codigo}`, { status: "textos_gerados" })));
+    await recarregarProduto(pid);
+    toast("Todos desmarcados.", "ok");
+    return;
+  }
+
+  const prontos = p.idiomas.filter((i) => i.titulo && i.descricao && i.status !== "revisado");
+  const semTextos = p.idiomas.filter((i) => !i.titulo || !i.descricao).length;
+  if (!prontos.length) {
+    toast("Nenhum idioma com título e descrição prontos pra revisar.", "erro");
+    return;
+  }
+  await Promise.all(prontos.map((i) =>
+    api("PATCH", `/api/produtos/${pid}/idiomas/${i.codigo}`, { status: "revisado" })));
+  await recarregarProduto(pid);
+  toast(semTextos
+    ? `${prontos.length} idioma(s) revisados ✓ — ${semTextos} sem textos ficaram de fora`
+    : "Todos os idiomas revisados ✓", semTextos ? "" : "ok");
+}
+
+async function escolherCapa(pid, codigo, btn) {
+  btn.classList.add("ocupado"); btn.disabled = true;
+  try {
+    const r = await api("POST", `/api/produtos/${pid}/idiomas/${codigo}/escolher-capa`);
+    if (r.ok) toast("Capa vinculada ✓", "ok");
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+    await recarregarProduto(pid);
+  }
+}
+
+async function detectarCapas(pid) {
+  const r = await api("POST", `/api/produtos/${pid}/detectar-capas`);
+  await recarregarProduto(pid);
+  toast(r.achadas
+    ? `${r.achadas} capa(s) encontrada(s) ✓`
+    : "Nenhuma capa nova — a imagem precisa ter o mesmo nome do PDF (ou o começo dele).", r.achadas ? "ok" : "");
+}
+
+async function alternarRevisado(pid, codigo) {
+  const p = estado.produtos.find((x) => x.id === pid);
+  const item = p?.idiomas.find((i) => i.codigo === codigo);
+  if (!item) return;
+  const novo = item.status === "revisado" ? "textos_gerados" : "revisado";
+  if (novo === "revisado" && (!item.titulo || !item.descricao)) {
+    toast("Traduza (ou preencha) título e descrição antes de marcar como revisado.", "erro");
+    return;
+  }
+  await api("PATCH", `/api/produtos/${pid}/idiomas/${codigo}`, { status: novo });
+  await recarregarProduto(pid);
+}
+
+async function excluirProduto(pid) {
+  const p = estado.produtos.find((x) => x.id === pid);
+  if (!confirm(`Excluir "${p?.titulo_pt}" (${p?.tipo}) da fila?\nOs arquivos PDF/capas NÃO são apagados.`)) return;
+  await api("DELETE", `/api/produtos/${pid}`);
+  estado.abertos.delete(pid);
+  await carregarProdutos();
+  toast("Produto removido da fila.", "ok");
+}
+
+// ---------------------------------------------------------------------------
+// Publicação (Fase B — robô)
+// ---------------------------------------------------------------------------
+const ROTULO_JOB = {
+  iniciando: "iniciando…", rodando: "robô trabalhando…",
+  aguardando_2fa: "⏸ esperando código", aguardando_confirmacao: "⏸ esperando você confirmar",
+  concluido: "concluído ✓", erro: "erro", cancelado: "cancelado",
+};
+const CLASSE_JOB = {
+  iniciando: "publicando", rodando: "publicando",
+  aguardando_2fa: "sem-capa", aguardando_confirmacao: "sem-capa",
+  concluido: "publicado", erro: "erro", cancelado: "rascunho",
+};
+let pollTimer = null;
+
+async function publicarIdioma(pid, codigo) {
+  const modo = $("chk-ensaio").checked ? "ensaio" : "real";
+  if (modo === "real" && !confirm(
+    "Publicar DE VERDADE na Hotmart?\n\nO robô vai criar o produto e só para nas pausas humanas (código e finalização).")) return;
+  await api("POST", `/api/produtos/${pid}/publicar/${codigo}`, { modo });
+  toast(modo === "ensaio"
+    ? "Ensaio iniciado — o robô preenche a 1ª tela e para."
+    : "Publicação iniciada 🚀", "ok");
+  await recarregarProduto(pid);
+  iniciarPollPublicacao();
+}
+
+function iniciarPollPublicacao() {
+  if (pollTimer) return;
+  pollTimer = setInterval(atualizarPainelPub, 1200);
+  atualizarPainelPub();
+}
+
+async function atualizarPainelPub() {
+  let r;
+  try { r = await api("GET", "/api/publicacao"); } catch (_) { return; }
+  if (!r.job) { pararPollPublicacao(true); return; }
+  renderPainelPub(r.job, r.ativo);
+  if (!r.ativo) {
+    pararPollPublicacao(false);
+    await carregarProdutos(); // reflete status publicado/erro/revisado nas linhas
+  }
+}
+
+function pararPollPublicacao(esconder) {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (esconder) $("painel-pub").classList.add("oculto");
+}
+
+function renderPainelPub(job, ativo) {
+  $("painel-pub").classList.remove("oculto");
+  $("pub-titulo").textContent = `${job.titulo} — ${job.pais}`;
+  $("pub-modo").textContent = job.modo;
+  const chip = $("pub-estado");
+  chip.textContent = ROTULO_JOB[job.estado] || job.estado;
+  chip.className = `chip ${CLASSE_JOB[job.estado] || "publicando"}`;
+  const log = $("pub-log");
+  log.innerHTML = job.mensagens.map((m) =>
+    `<div class="lin-${esc(m.nivel)}"><span class="hora">${esc(m.hora)}</span>${esc(m.texto)}</div>`
+  ).join("");
+  log.scrollTop = log.scrollHeight;
+  $("pub-acao-2fa").classList.toggle("oculto", job.estado !== "aguardando_2fa");
+  $("pub-acao-confirmar").classList.toggle("oculto", job.estado !== "aguardando_confirmacao");
+  $("btn-cancelar-pub").classList.toggle("oculto", !ativo);
+  $("btn-fechar-pub").classList.toggle("oculto", ativo);
+}
+
+$("btn-enviar-codigo").addEventListener("click", async () => {
+  const codigo = $("pub-codigo").value.trim();
+  if (codigo.length < 6) { toast("Código precisa ter 6 dígitos.", "erro"); return; }
+  try {
+    await api("POST", "/api/publicacao/codigo", { codigo });
+    $("pub-codigo").value = "";
+    atualizarPainelPub();
+  } catch (e) { toast(e.message, "erro"); }
+});
+$("pub-codigo").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("btn-enviar-codigo").click();
+});
+
+$("btn-confirmar-pub").addEventListener("click", async () => {
+  try { await api("POST", "/api/publicacao/confirmar"); atualizarPainelPub(); }
+  catch (e) { toast(e.message, "erro"); }
+});
+
+$("btn-cancelar-pub").addEventListener("click", async () => {
+  if (!confirm("Cancelar a publicação em andamento?")) return;
+  try { await api("POST", "/api/publicacao/cancelar"); atualizarPainelPub(); }
+  catch (e) { toast(e.message, "erro"); }
+});
+
+$("btn-fechar-pub").addEventListener("click", () => pararPollPublicacao(true));
+
+// ---------------------------------------------------------------------------
+// Títulos em português (colar do Discord)
+// ---------------------------------------------------------------------------
+$("titulos-toggle").addEventListener("click", () => {
+  $("titulos-corpo").classList.toggle("oculto");
+  document.querySelector(".titulos-card").classList.toggle("aberto");
+});
+
+$("btn-aplicar-titulos").addEventListener("click", async () => {
+  const texto = $("titulos-texto").value.trim();
+  const pasta = $("titulos-pasta").value;
+  if (!texto) { toast("Cole a lista de títulos primeiro.", "erro"); return; }
+  if (!pasta) { toast("Importe os produtos da pasta antes de aplicar os títulos.", "erro"); return; }
+  const btn = $("btn-aplicar-titulos");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  try {
+    const r = await api("POST", "/api/titulos/aplicar", { texto, pasta });
+    await carregarProdutos();
+    if (!r.aplicados.length) {
+      toast("Nenhum título aplicado — confira o formato da lista e a pasta escolhida.", "erro");
+    } else {
+      const aviso = r.sem_match.length ? ` · ${r.sem_match.length} produto(s) sem título na lista` : "";
+      toast(`${r.aplicados.length} título(s) aplicado(s) ✓${aviso}`, "ok");
+    }
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+  }
+});
+
+$("btn-login-hotmart").addEventListener("click", async () => {
+  try {
+    const r = await api("POST", "/api/hotmart/login");
+    toast(r.detalhe, "ok");
+  } catch (e) { toast(e.message, "erro"); }
+});
+
+$("chk-ensaio").addEventListener("change", async () => {
+  try { await api("POST", "/api/settings", { robo: { ensaio: $("chk-ensaio").checked } }); }
+  catch (_) {}
+});
+
+// ---------------------------------------------------------------------------
+// Atualização do sistema
+// ---------------------------------------------------------------------------
+let updateEstado = "checar"; // "checar" -> "atualizar"
+
+async function checarVersao() {
+  try {
+    const r = await api("GET", "/api/versao");
+    const st = $("update-status");
+    const log = $("update-log");
+    st.textContent = `Versão local: ${r.local}` + (r.latest != null ? ` · última publicada: ${r.latest}` : "");
+    if (!r.configurado) {
+      log.textContent = "Atualização automática ainda não configurada neste PC.";
+      log.className = "feedback";
+      $("btn-atualizar").disabled = true;
+      return;
+    }
+    if (r.ha_atualizacao) {
+      log.textContent = `Há uma atualização disponível (v${r.latest}). Clique em "Atualizar agora".`;
+      log.className = "feedback tem-update";
+      $("btn-atualizar").textContent = "Atualizar agora";
+      updateEstado = "atualizar";
+    } else if (r.latest != null) {
+      log.textContent = "Você está com a versão mais recente ✓";
+      log.className = "feedback";
+      $("btn-atualizar").textContent = "Verificar atualizações";
+      updateEstado = "checar";
+    }
+  } catch (_) { /* offline — ignora */ }
+}
+
+async function aplicarAtualizacao() {
+  const btn = $("btn-atualizar");
+  const log = $("update-log");
+  btn.classList.add("ocupado"); btn.disabled = true;
+  log.textContent = "Baixando atualização...";
+  try {
+    const r = await api("POST", "/api/atualizar");
+    if (!r.ok) {
+      log.textContent = "Não foi possível atualizar: " + (r.error || "erro desconhecido");
+      log.className = "feedback";
+      return;
+    }
+    let msg = `Atualizado para a versão ${r.version} ✓ (${r.updated.length} arquivo(s)).`;
+    if (r.failed.length) msg += ` ${r.failed.length} falharam.`;
+    if (r.restart) msg += "\n⚠ Feche e abra o app de novo (start.bat) pra aplicar.";
+    log.textContent = msg;
+    log.className = "feedback tem-update";
+  } catch (e) {
+    log.textContent = "Erro: " + e.message;
+    log.className = "feedback";
+  } finally {
+    btn.classList.remove("ocupado"); btn.disabled = false;
+    btn.textContent = "Verificar atualizações";
+    updateEstado = "checar";
+  }
+}
+
+$("btn-atualizar").addEventListener("click", () => {
+  if (updateEstado === "atualizar") aplicarAtualizacao();
+  else checarVersao();
+});
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+(async function init() {
+  await Promise.all([atualizarStatusKey(), carregarConfig(), carregarProdutos()]);
+  checarVersao(); // mostra a versao e avisa se ha update (silencioso se offline)
+  $("chk-ensaio").checked = estado.settings?.robo?.ensaio !== false;
+  // se tinha publicação rolando (F5 no meio), retoma o painel
+  const pub = await api("GET", "/api/publicacao").catch(() => null);
+  if (pub?.job) iniciarPollPublicacao();
+})();

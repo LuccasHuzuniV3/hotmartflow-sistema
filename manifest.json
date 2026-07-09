@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "files": [
+    "README.md",
+    "app/__init__.py",
+    "app/launcher.py",
+    "app/server.py",
+    "app/web/app.js",
+    "app/web/index.html",
+    "app/web/style.css",
+    "core/__init__.py",
+    "core/agy.py",
+    "core/config.py",
+    "core/dialogo.py",
+    "core/hotmart_map.py",
+    "core/idiomas.py",
+    "core/llm.py",
+    "core/produtos.py",
+    "core/robo.py",
+    "core/scanner.py",
+    "core/textos.py",
+    "core/titulos.py",
+    "core/updater.py",
+    "requirements.txt",
+    "start.bat"
+  ]
+}

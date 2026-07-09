@@ -1,0 +1,52 @@
+"""Acesso a settings.json e paths globais do HotmartFlow."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent.parent
+PASTA_CONFIG = RAIZ / "config"
+PASTA_DATA = RAIZ / "data"
+ARQUIVO_SETTINGS = PASTA_CONFIG / "settings.json"
+
+_DEFAULTS = {
+    "provider": "agy",  # "agy" (Antigravity CLI, igual EbookFlow) ou "openai"
+    "agy": {"model": ""},  # vazio = modelo padrao do agy
+    "openai": {"api_key": "", "model": "gpt-4o"},
+    "precos": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
+    "moeda": "USD",
+    "hotmart": {"categoria": "Espiritualidade", "reembolso_dias": 7},
+    "coproducao": {"email": "", "percentual": 45},
+    "descricao": {
+        "tom": "inspirador, acolhedor e persuasivo",
+        "tamanho_min": 400,
+        "tamanho_max": 900,
+    },
+    "pastas_recentes": [],
+    "robo": {"ensaio": True},  # comeca em modo seguro ate os seletores serem calibrados
+}
+
+
+def carregar_settings() -> dict:
+    if not ARQUIVO_SETTINGS.is_file():
+        salvar_settings(_deep_copy(_DEFAULTS))
+        return _deep_copy(_DEFAULTS)
+    with open(ARQUIVO_SETTINGS, "r", encoding="utf-8") as f:
+        dados = json.load(f)
+    merged = _deep_copy(_DEFAULTS)
+    for k, v in dados.items():
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = {**merged[k], **v}
+        else:
+            merged[k] = v
+    return merged
+
+
+def salvar_settings(settings: dict) -> None:
+    PASTA_CONFIG.mkdir(parents=True, exist_ok=True)
+    with open(ARQUIVO_SETTINGS, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2, ensure_ascii=False)
+
+
+def _deep_copy(d: dict) -> dict:
+    return json.loads(json.dumps(d))
