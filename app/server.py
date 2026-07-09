@@ -227,6 +227,13 @@ def produtos_listar():
     return produtos.listar()
 
 
+@app.delete("/api/produtos")
+def produtos_remover_todos():
+    """Limpa a fila inteira (nao apaga os arquivos PDF/capas em disco)."""
+    n = produtos.remover_todos()
+    return {"ok": True, "removidos": n}
+
+
 @app.get("/api/produtos/{produto_id}")
 def produto_obter(produto_id: str):
     try:

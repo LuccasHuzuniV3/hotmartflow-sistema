@@ -116,8 +116,10 @@ MAPA = {
         {"tipo": "placeholder", "texto": "Em qual país você quer vender"},
         {"tipo": "role", "role": "textbox", "nome": "Em qual país você quer vender"},
     ],
+    # Campo de capa: input#cover — aceita SO 1 imagem (nao e multiple).
     "input_capa": [
-        {"tipo": "css", "css": "input[type='file']"},
+        {"tipo": "css", "css": "#cover"},
+        {"tipo": "css", "css": "input[type='file'][accept*='image']"},
     ],
     # Categoria = BOTOES/chips (nao dropdown). O robo clica no chip com o texto
     # da categoria (ex.: "Espiritualidade") direto — ver clicar_por_texto.

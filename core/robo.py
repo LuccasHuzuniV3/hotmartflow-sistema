@@ -556,21 +556,30 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
 
             # ---- 2. informacoes basicas (ja estamos nela) ------------------
             job.marcar_etapa("informacoes_basicas", "Preenchendo informações básicas...")
+            # espera a SPA terminar de carregar ANTES de digitar (senao a Hotmart
+            # 'reseta' o form logo apos o 1o campo e apaga o Nome).
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1500)
             tela.preencher("campo_nome", item["titulo"])
             tela.preencher("campo_descricao", item["descricao"])
             tela.escolher_opcao("campo_idioma", hm.IDIOMA_HOTMART[item["codigo"]])
             tela.escolher_opcao("campo_pais", hm.PAIS_HOTMART[item["codigo"]])
-            # imagens: capa do produto + imagens dos anexos (bonus/extras) juntas
-            imagens = []
+            # capa: o campo #cover aceita SO 1 imagem (a capa do produto).
             if item.get("capa") and Path(item["capa"]).is_file():
-                imagens.append(item["capa"])
-            for anexo in item.get("anexos", []):
-                if anexo.get("capa") and Path(anexo["capa"]).is_file():
-                    imagens.append(anexo["capa"])
-            if imagens:
-                tela.upload("input_capa", imagens)
-                job.log(f"{len(imagens)} imagem(ns) enviada(s) nas informações básicas.")
-                page.wait_for_timeout(2000)
+                tela.upload("input_capa", item["capa"])
+                job.log("Capa enviada.")
+                page.wait_for_timeout(2500)
+            else:
+                job.log("Sem capa pra esse idioma — imagem pulada.", "aviso")
+            # imagens de bonus/extra NAO cabem no campo de capa (aceita 1 so)
+            imgs_anexo = [a for a in item.get("anexos", [])
+                          if a.get("capa") and Path(a["capa"]).is_file()]
+            if imgs_anexo:
+                job.log(f"{len(imgs_anexo)} imagem(ns) de bônus/extra não entram no campo "
+                        "de capa (ele aceita 1 imagem só) — confira se precisam ir noutro lugar.", "aviso")
             tela.clicar_por_texto(s["hotmart"]["categoria"])  # categoria = chip/botao
             tela.shot("basico_preenchido")
 

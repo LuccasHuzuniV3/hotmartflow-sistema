@@ -288,12 +288,25 @@ function renderResumoGeral() {
     ${publicados ? `<span class="rg-sep">·</span><span class="rg-item rg-ok">${publicados} publicados ✓</span>` : ""}
     ${semCapa ? `<span class="rg-sep">·</span><span class="rg-item rg-alerta">${semCapa} sem capa</span>` : ""}
     ${comErro ? `<span class="rg-sep">·</span><span class="rg-item rg-erro">${comErro} com erro</span>` : ""}
+    <button class="rg-limpar" data-acao="limpar-tudo" title="Remove todos os produtos da fila (não apaga os PDFs/capas do disco)">🗑 Apagar todos</button>
     <span class="rg-barra" title="azul = traduzido · verde = revisado · verde forte = publicado">
       <i class="b-trad" style="width:${pct(comTextos - revisados)}%"></i>
       <i class="b-rev" style="width:${pct(revisados - publicados)}%"></i>
       <i class="b-pub" style="width:${pct(publicados)}%"></i>
     </span>`;
 }
+
+$("resumo-geral").addEventListener("click", async (e) => {
+  if (!e.target.closest("[data-acao='limpar-tudo']")) return;
+  const total = estado.produtos.length;
+  if (!confirm(`Apagar TODOS os ${total} produtos da fila?\n\nOs arquivos PDF/capas NÃO são apagados — só a fila daqui. Você pode reimportar a pasta depois.`)) return;
+  try {
+    const r = await api("DELETE", "/api/produtos");
+    estado.abertos.clear();
+    await carregarProdutos();
+    toast(`${r.removidos} produto(s) removido(s) da fila.`, "ok");
+  } catch (err) { toast(err.message, "erro"); }
+});
 
 function atualizarSelectPastas() {
   const sel = $("titulos-pasta");

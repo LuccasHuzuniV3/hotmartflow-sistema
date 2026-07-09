@@ -87,6 +87,19 @@ def test_remover():
     assert produtos.listar() == []
 
 
+def test_remover_todos():
+    produtos.criar(grupo_exemplo(), pasta_origem="C:/x", precos=PRECOS)
+    produtos.criar(grupo_exemplo(), pasta_origem="C:/x", precos=PRECOS)
+    produtos.criar(grupo_exemplo(), pasta_origem="C:/x", precos=PRECOS)
+    n = produtos.remover_todos()
+    assert n == 3
+    assert produtos.listar() == []
+
+
+def test_remover_todos_fila_vazia():
+    assert produtos.remover_todos() == 0
+
+
 # ---------------------------------------------------------------------------
 # Atualizacao do produto (campos PT)
 # ---------------------------------------------------------------------------

@@ -137,6 +137,22 @@ def remover(produto_id: str) -> None:
             arq.unlink()
 
 
+def remover_todos() -> int:
+    """Apaga TODOS os produtos da fila. Retorna quantos foram removidos.
+    NAO apaga PDFs/capas — so os registros JSON da fila."""
+    with _TRAVA:
+        if not PASTA_PRODUTOS.is_dir():
+            return 0
+        n = 0
+        for arq in PASTA_PRODUTOS.glob("*.json"):
+            try:
+                arq.unlink()
+                n += 1
+            except OSError:
+                pass
+        return n
+
+
 def atualizar(produto_id: str, patch: dict) -> dict:
     """Atualiza campos do produto (apenas os editaveis: titulo_pt, descricao_pt)."""
     invalidos = set(patch) - CAMPOS_PRODUTO
