@@ -449,20 +449,25 @@ class Tela:
         self.page.locator(hm.MAPA[chave][0]["css"]).first.set_input_files(arquivos)
 
     def upload_conteudo(self, arquivos: list[str]) -> None:
-        """Upload na tela de Conteúdo: tenta o input[type=file] escondido; se nao
-        rolar, clica no botao 'Selecione um arquivo' e usa o file chooser."""
+        """Upload na tela de Conteúdo — UM ARQUIVO POR VEZ.
+
+        Motivo: como o robô se conecta ao Chrome já aberto (CDP), o Playwright
+        limita a transferencia a 50MB por chamada. Mandando 1 PDF de cada vez
+        (cada um < 50MB) contornamos o limite, e cada clique no botao ADICIONA
+        o arquivo na lista (nao substitui)."""
         if isinstance(arquivos, str):
             arquivos = [arquivos]
-        try:
-            self.page.locator("input[type='file']").first.set_input_files(arquivos, timeout=5000)
-            self.page.wait_for_timeout(500)
-            return
-        except Exception:
-            pass
-        with self.page.expect_file_chooser() as fc:
-            self.clicar("btn_selecione_arquivo")
-        fc.value.set_files(arquivos)
-        self.page.wait_for_timeout(500)
+        for n, arq in enumerate(arquivos, 1):
+            nome = Path(arq).name
+            self.job.log(f"Enviando arquivo {n}/{len(arquivos)}: {nome}...")
+            with self.page.expect_file_chooser() as fc:
+                self.clicar("btn_selecione_arquivo")
+            fc.value.set_files(arq)
+            # espera esse arquivo aparecer na lista antes de mandar o proximo
+            if not self.existe_texto(nome, timeout=300_000):
+                self.shot(f"erro_upload_{n}")
+                raise RoboError(f"O arquivo '{nome}' não terminou de subir em 5 min.")
+            self.page.wait_for_timeout(1500)
 
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         import re
@@ -699,11 +704,8 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             except Exception:
                 pass
             page.wait_for_timeout(2000)
-            tela.upload_conteudo(pdfs)
-            nome_pdf = Path(item["pdf"]).name
-            job.log(f"Upload iniciado — aguardando '{nome_pdf}' concluir...")
-            if not tela.existe_texto(nome_pdf, timeout=300_000):
-                raise RoboError("Upload do PDF não concluiu em 5 minutos.")
+            tela.upload_conteudo(pdfs)  # sobe 1 por vez e espera cada um
+            job.log(f"{len(pdfs)} arquivo(s) enviado(s) ✔")
             tela.shot("pdf_enviado")
 
             # ---- 6. coproducao ----------------------------------------------
