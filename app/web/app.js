@@ -108,6 +108,7 @@ async function carregarConfig() {
   $("cfg-tam-max").value = s.descricao.tamanho_max;
   $("cfg-coprod-email").value = s.coproducao.email;
   $("cfg-coprod-pct").value = s.coproducao.percentual;
+  $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
 
   const grid = $("cfg-precos");
   grid.innerHTML = Object.entries(s.precos).map(([tipo, preco]) => `
@@ -140,6 +141,7 @@ $("btn-salvar-config").addEventListener("click", async () => {
       email: $("cfg-coprod-email").value.trim(),
       percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
     },
+    robo: { delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10) },
   };
   try {
     estado.settings = await api("POST", "/api/settings", patch);

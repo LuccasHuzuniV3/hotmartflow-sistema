@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "files": [
     "README.md",
     "app/__init__.py",

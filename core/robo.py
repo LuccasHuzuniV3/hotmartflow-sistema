@@ -307,7 +307,11 @@ class Tela:
 
     def preencher(self, chave: str, valor: str) -> None:
         """Digita LETRA POR LETRA com delay — a Hotmart reseta o form se o
-        preenchimento for instantaneo (fill). press_sequentially simula humano."""
+        preenchimento for instantaneo (fill). press_sequentially simula humano.
+
+        CRITICO: texto longo (descricao de 500+ chars) leva mais que o timeout
+        padrao de 20s pra digitar. Calculamos um timeout proporcional ao tamanho
+        (senao estoura no meio da digitacao)."""
         campo = self._localizar(chave)
         campo.click()
         self.page.wait_for_timeout(300)
@@ -315,10 +319,12 @@ class Tela:
             campo.fill("")  # limpa o que tiver
         except Exception:
             pass
+        # tempo total = n_chars * delay + folga generosa
+        tmo = max(30000, len(valor) * self.delay_digitacao + 20000)
         try:
-            campo.press_sequentially(valor, delay=self.delay_digitacao)
+            campo.press_sequentially(valor, delay=self.delay_digitacao, timeout=tmo)
         except Exception:
-            campo.type(valor, delay=self.delay_digitacao)  # fallback API antiga
+            campo.type(valor, delay=self.delay_digitacao, timeout=tmo)  # fallback API antiga
         self.page.wait_for_timeout(250)
 
     def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
