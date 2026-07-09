@@ -448,6 +448,22 @@ class Tela:
             arquivos = [arquivos]
         self.page.locator(hm.MAPA[chave][0]["css"]).first.set_input_files(arquivos)
 
+    def upload_conteudo(self, arquivos: list[str]) -> None:
+        """Upload na tela de Conteúdo: tenta o input[type=file] escondido; se nao
+        rolar, clica no botao 'Selecione um arquivo' e usa o file chooser."""
+        if isinstance(arquivos, str):
+            arquivos = [arquivos]
+        try:
+            self.page.locator("input[type='file']").first.set_input_files(arquivos, timeout=5000)
+            self.page.wait_for_timeout(500)
+            return
+        except Exception:
+            pass
+        with self.page.expect_file_chooser() as fc:
+            self.clicar("btn_selecione_arquivo")
+        fc.value.set_files(arquivos)
+        self.page.wait_for_timeout(500)
+
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         import re
         try:
@@ -660,10 +676,17 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             tela.selecionar_club_com_espaco(limite=300)
             tela.shot("club_escolhido")
             tela.clicar("btn_criar_produto_final")
-            job.log("Produto criado (rascunho). Seguindo pro conteúdo...")
+            job.log("Produto criado (rascunho). Indo pro painel...")
             page.wait_for_timeout(4000)
 
-            # ---- 5. conteudo (PDF principal + anexos) ------------------------
+            # ---- 4c. tela "Criado com sucesso" -> Painel do produto ----------
+            try:
+                tela.clicar("btn_ir_painel")
+                page.wait_for_timeout(3500)
+            except RoboError:
+                job.log("Sem 'Ir para o painel' — seguindo (talvez já no painel).", "aviso")
+
+            # ---- 5. conteudo do produto: menu lateral -> upload dos PDFs ------
             anexos_pdf = [a["pdf"] for a in item.get("anexos", [])
                           if a.get("pdf") and Path(a["pdf"]).is_file()]
             pdfs = [item["pdf"]] + anexos_pdf
@@ -671,8 +694,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                              f"Subindo {len(pdfs)} PDF(s): principal"
                              + (f" + {len(anexos_pdf)} anexo(s)" if anexos_pdf else "") + "...")
             tela.clicar("menu_conteudo")
-            page.wait_for_timeout(1500)
-            tela.upload("input_pdf", pdfs)
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            page.wait_for_timeout(2000)
+            tela.upload_conteudo(pdfs)
             nome_pdf = Path(item["pdf"]).name
             job.log(f"Upload iniciado — aguardando '{nome_pdf}' concluir...")
             if not tela.existe_texto(nome_pdf, timeout=300_000):

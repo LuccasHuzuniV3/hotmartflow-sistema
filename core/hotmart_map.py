@@ -165,22 +165,35 @@ MAPA = {
         {"tipo": "role", "role": "button", "nome": "^Criar produto$"},
         {"tipo": "texto", "texto": "^Criar produto$"},
     ],
+    # Tela "Criado com sucesso" -> vai pro painel do produto.
+    "btn_ir_painel": [
+        {"tipo": "role", "role": "button", "nome": "Ir para o painel"},
+        {"tipo": "role", "role": "link", "nome": "Ir para o painel"},
+        {"tipo": "texto", "texto": "Ir para o painel"},
+    ],
 
     # ---------- conteudo ----------
+    # Menu lateral "Conteúdo do Produto" é um BUTTON (nao link).
     "menu_conteudo": [
+        {"tipo": "role", "role": "button", "nome": "Conteúdo do Produto"},
         {"tipo": "role", "role": "link", "nome": "Conteúdo do Produto"},
         {"tipo": "texto", "texto": "Conteúdo do Produto"},
-        {"tipo": "texto", "texto": "Conteúdo"},
     ],
     "input_pdf": [
         {"tipo": "css", "css": "input[type='file']"},
     ],
+    # Botao "Selecione um arquivo" (abre a janela de arquivo).
+    "btn_selecione_arquivo": [
+        {"tipo": "role", "role": "button", "nome": "Selecione um arquivo"},
+        {"tipo": "texto", "texto": "Selecione um arquivo"},
+    ],
 
     # ---------- coproducao ----------
+    # Menu lateral "Coproduções" tambem e BUTTON.
     "menu_coproducao": [
+        {"tipo": "role", "role": "button", "nome": "Coproduções"},
         {"tipo": "role", "role": "link", "nome": "Coproduções"},
         {"tipo": "texto", "texto": "Coproduções"},
-        {"tipo": "texto", "texto": "Coprodução"},
     ],
     "btn_convidar_coprodutor": [
         {"tipo": "role", "role": "button", "nome": "Convidar Coprodutor"},
