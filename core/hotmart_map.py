@@ -104,21 +104,23 @@ MAPA = {
         {"tipo": "label", "texto": "Descrição"},
         {"tipo": "css", "css": "textarea.hot-form__input"},
     ],
+    # Idioma/Pais sao COMBOBOX de busca (input#dropdown-input). O id NAO e unico
+    # entre os dois — distingue pelo nome acessivel (o texto de dentro do campo).
     "campo_idioma": [
-        {"tipo": "label", "texto": "Idioma do produto"},
-        {"tipo": "texto", "texto": "Idioma do produto"},
+        {"tipo": "label", "texto": "Qual o idioma do seu produto"},
+        {"tipo": "placeholder", "texto": "Qual o idioma do seu produto"},
+        {"tipo": "role", "role": "textbox", "nome": "Qual o idioma do seu produto"},
     ],
     "campo_pais": [
-        {"tipo": "label", "texto": "Principal país para vendas"},
-        {"tipo": "texto", "texto": "Principal país"},
+        {"tipo": "label", "texto": "Em qual país você quer vender"},
+        {"tipo": "placeholder", "texto": "Em qual país você quer vender"},
+        {"tipo": "role", "role": "textbox", "nome": "Em qual país você quer vender"},
     ],
     "input_capa": [
         {"tipo": "css", "css": "input[type='file']"},
     ],
-    "campo_categoria": [
-        {"tipo": "label", "texto": "Categoria"},
-        {"tipo": "texto", "texto": "Categoria"},
-    ],
+    # Categoria = BOTOES/chips (nao dropdown). O robo clica no chip com o texto
+    # da categoria (ex.: "Espiritualidade") direto — ver clicar_por_texto.
     "btn_avancar_basico": [
         {"tipo": "role", "role": "button", "nome": "Avançar"},
         {"tipo": "role", "role": "button", "nome": "Continuar"},

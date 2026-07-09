@@ -322,18 +322,27 @@ class Tela:
         self.page.wait_for_timeout(250)
 
     def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
-        """Dropdown custom da Hotmart (<hot-select>/<hot-select-option>): clica pra
-        ABRIR, espera a opcao ficar VISIVEL e clica nela (a opcao fica 'hidden'
-        enquanto o dropdown esta fechado)."""
+        """Combobox de busca da Hotmart (input#dropdown-input): clica pra abrir,
+        DIGITA o texto pra filtrar, e clica na opcao (<hot-select-option>) que
+        aparece. A opcao fica 'hidden' enquanto o dropdown esta fechado."""
         import re
         campo = self._localizar(chave_campo)
         campo.click()               # abre o dropdown
+        self.page.wait_for_timeout(400)
+        try:                        # digita pra filtrar a lista
+            campo.press_sequentially(texto_opcao, delay=self.delay_digitacao)
+        except Exception:
+            try:
+                campo.type(texto_opcao, delay=self.delay_digitacao)
+            except Exception:
+                pass
         self.page.wait_for_timeout(600)
         alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
         tentativas = [
             lambda: self.page.locator("hot-select-option").filter(has_text=alvo),
             lambda: self.page.get_by_role("option", name=texto_opcao, exact=True),
             lambda: self.page.locator("hot-select-option", has_text=texto_opcao),
+            lambda: self.page.locator("hot-select-option").first,
             lambda: self.page.get_by_text(alvo),
         ]
         for fabricar in tentativas:
@@ -347,9 +356,32 @@ class Tela:
                 continue
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
-            f"Não consegui abrir/selecionar '{texto_opcao}' no campo {chave_campo}. "
+            f"Não consegui selecionar '{texto_opcao}' no campo {chave_campo}. "
             "Print salvo em data/publicacoes."
         )
+
+    def clicar_por_texto(self, texto: str) -> None:
+        """Clica num botao/chip que tenha exatamente esse texto (ex.: categoria
+        'Espiritualidade', que na Hotmart e um botao, nao um dropdown)."""
+        import re
+        alvo = re.compile(rf"^\s*{re.escape(texto)}\s*$", re.I)
+        tentativas = [
+            lambda: self.page.get_by_role("button", name=texto, exact=True),
+            lambda: self.page.get_by_role("radio", name=texto, exact=True),
+            lambda: self.page.locator("button").filter(has_text=alvo),
+            lambda: self.page.get_by_text(alvo),
+        ]
+        for fabricar in tentativas:
+            try:
+                el = fabricar().first
+                el.wait_for(state="visible", timeout=4000)
+                el.click()
+                self.page.wait_for_timeout(300)
+                return
+            except Exception:
+                continue
+        self.shot(f"erro_botao_{texto}")
+        raise RoboError(f"Não achei o botão/opção '{texto}'. Print salvo em data/publicacoes.")
 
     def upload(self, chave: str, arquivos: str | list[str]) -> None:
         if isinstance(arquivos, str):
@@ -515,7 +547,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 tela.upload("input_capa", imagens)
                 job.log(f"{len(imagens)} imagem(ns) enviada(s) nas informações básicas.")
                 page.wait_for_timeout(2000)
-            tela.escolher_opcao("campo_categoria", s["hotmart"]["categoria"])
+            tela.clicar_por_texto(s["hotmart"]["categoria"])  # categoria = chip/botao
             tela.shot("basico_preenchido")
 
             if ensaio:
