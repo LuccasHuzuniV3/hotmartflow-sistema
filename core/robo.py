@@ -366,6 +366,24 @@ class Tela:
             "Print salvo em data/publicacoes."
         )
 
+    def garantir_valor(self, chave: str, esperado: str, tentativas: int = 3) -> bool:
+        """Confere se o campo tem valor; se ficou VAZIO (a Hotmart as vezes da um
+        'reset'/F5 depois do 1o campo e apaga o Nome), repreenche ate ter valor."""
+        for _ in range(tentativas):
+            try:
+                atual = self._localizar(chave).input_value()
+            except Exception:
+                atual = ""
+            if atual.strip():
+                return True
+            self.job.log(f"Campo '{chave}' ficou vazio (a Hotmart resetou?) — repreenchendo.", "aviso")
+            self.preencher(chave, esperado)
+            self.page.wait_for_timeout(500)
+        try:
+            return bool(self._localizar(chave).input_value().strip())
+        except Exception:
+            return False
+
     def clicar_por_texto(self, texto: str) -> None:
         """Clica num botao/chip que tenha exatamente esse texto (ex.: categoria
         'Espiritualidade', que na Hotmart e um botao, nao um dropdown)."""
@@ -556,9 +574,15 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             tela.clicar_por_texto(s["hotmart"]["categoria"])  # categoria = chip/botao
             tela.shot("basico_preenchido")
 
+            # ---- 2b. conferir se a Hotmart nao resetou nada (o Nome some as vezes) ----
+            job.marcar_etapa("conferir", "Conferindo se a Hotmart não apagou nenhum campo...")
+            tela.garantir_valor("campo_nome", item["titulo"])
+            tela.garantir_valor("campo_descricao", item["descricao"])
+            tela.shot("basico_conferido")
+
             if ensaio:
-                job.log("ENSAIO: primeira tela preenchida. Parando aqui sem clicar em nada "
-                        "que avance — confira os prints em data/publicacoes.", "ok")
+                job.log("ENSAIO: primeira tela preenchida e conferida. Parando aqui sem "
+                        "avançar — confira os prints em data/publicacoes.", "ok")
                 return
 
             tela.clicar("btn_avancar_basico")
