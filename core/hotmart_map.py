@@ -197,26 +197,40 @@ MAPA = {
     ],
     "btn_convidar_coprodutor": [
         {"tipo": "role", "role": "button", "nome": "Convidar Coprodutor"},
+        {"tipo": "css", "css": "button.hot-btn--primary"},
         {"tipo": "texto", "texto": "Convidar Coprodutor"},
     ],
+    # E-mail do coprodutor: input com name "Email do Coprodutor" / class js-input-email.
     "campo_email_coprodutor": [
-        {"tipo": "label", "texto": "E-mail"},
-        {"tipo": "placeholder", "texto": "e-mail"},
+        {"tipo": "label", "texto": "Email do Coprodutor"},
+        {"tipo": "css", "css": "input.js-input-email"},
+        {"tipo": "placeholder", "texto": "email@example.com"},
         {"tipo": "css", "css": "input[type='email']"},
     ],
-    "opcao_socio_produtor": [
-        {"tipo": "texto", "texto": "Sócio do produtor"},
+    # "Como o(a) coprodutor(a) irá atuar?" -> escolher "Sócio do produtor".
+    "campo_atuacao": [
+        {"tipo": "label", "texto": "Como o(a) coprodutor(a) irá atuar"},
+        {"tipo": "placeholder", "texto": "Escolha a atuação do Coprodutor"},
+        {"tipo": "role", "role": "textbox", "nome": "Escolha a atuação do Coprodutor"},
     ],
+    # Porcentagem das comissoes: input#proposedPercentage.
     "campo_percentual": [
-        {"tipo": "label", "texto": "comissão"},
-        {"tipo": "css", "css": "input[type='number']"},
+        {"tipo": "css", "css": "#proposedPercentage"},
+        {"tipo": "css", "css": "input.js-proposed-percentage"},
+        {"tipo": "role", "role": "textbox", "nome": "Porcentagem das comissões"},
+        {"tipo": "label", "texto": "Porcentagem das comissões"},
     ],
+    # Checkbox custom "Li e aceito os termos e condições da coprodução".
     "check_termos": [
+        {"tipo": "texto", "texto": "Li e aceito os termos e condições da coprodução"},
+        {"tipo": "texto", "texto": "Li e aceito os termos"},
         {"tipo": "css", "css": "input[type='checkbox']"},
-        {"tipo": "texto", "texto": "Li e concordo"},
     ],
+    # Botao final do convite: "Continuar" (nao "Enviar convite").
     "btn_enviar_convite": [
+        {"tipo": "role", "role": "button", "nome": "^Continuar$"},
         {"tipo": "role", "role": "button", "nome": "Enviar convite"},
+        {"tipo": "role", "role": "button", "nome": "^Enviar$"},
     ],
     "campo_codigo_2fa": [
         {"tipo": "label", "texto": "código"},

@@ -713,14 +713,18 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             if (coprod.get("email") or "").strip():
                 job.marcar_etapa("coproducao", f"Coprodução: {coprod['email']} ({coprod['percentual']}%)...")
                 tela.clicar("menu_coproducao")
-                page.wait_for_timeout(2000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(2500)
                 if tela.existe_texto(coprod["email"]) and tela.existe_texto("Pendente"):
                     job.log("Já existe convite Pendente pra esse coprodutor — pulando (evita duplicar).", "aviso")
                 else:
                     tela.clicar("btn_convidar_coprodutor")
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(2000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
-                    tela.clicar("opcao_socio_produtor")
+                    tela.escolher_opcao("campo_atuacao", "Sócio do produtor")
                     tela.preencher("campo_percentual", str(coprod["percentual"]))
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
