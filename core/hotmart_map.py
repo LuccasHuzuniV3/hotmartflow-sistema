@@ -70,6 +70,14 @@ PAIS_HOTMART = {
 }
 
 MAPA = {
+    # ---------- login (rede de seguranca) ----------
+    "btn_entrar_login": [
+        {"tipo": "role", "role": "button", "nome": "Entrar"},
+        {"tipo": "role", "role": "button", "nome": "Acessar"},
+        {"tipo": "role", "role": "button", "nome": "Login"},
+        {"tipo": "css", "css": "button[type='submit']"},
+    ],
+
     # ---------- criacao ----------
     "btn_criar_produto": [
         {"tipo": "role", "role": "button", "nome": "Criar produto"},

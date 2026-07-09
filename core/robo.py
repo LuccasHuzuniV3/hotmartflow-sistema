@@ -31,6 +31,7 @@ from core import hotmart_map as hm
 RAIZ = Path(__file__).resolve().parent.parent
 PASTA_PERFIL = RAIZ / "data" / "hotmart_profile"
 PASTA_PUBLICACOES = RAIZ / "data" / "publicacoes"
+PORTA_CDP = 9222  # porta de controle do Chrome do robo (conecta na janela ja aberta)
 
 ESTADOS_ATIVOS = ("iniciando", "rodando", "aguardando_2fa", "aguardando_confirmacao")
 MODOS = ("real", "ensaio", "simulado")
@@ -331,30 +332,96 @@ class Tela:
             return False
 
 
-def _abrir_navegador(p):
-    """Perfil persistente PROPRIO do robo (data/hotmart_profile), separado do
-    Chrome pessoal. O login na Hotmart e feito UMA VEZ aqui e fica salvo — nas
-    proximas vezes ja abre logado. As flags evitam a tela de 'escolher perfil'."""
+URL_CDP = f"http://127.0.0.1:{PORTA_CDP}"
+
+
+def _chrome_exe() -> str | None:
+    candidatos = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    for c in candidatos:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def _cdp_ativo() -> bool:
+    """A janela de controle do Chrome ja esta no ar (porta de depuracao respondendo)?"""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(URL_CDP + "/json/version", timeout=1) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _matar_chrome_do_perfil() -> None:
+    """Fecha um Chrome antigo que esteja usando o perfil do robo SEM a porta de
+    depuracao (senao o novo launch vira 'singleton' sem porta e o connect falha)."""
+    if os.name != "nt":
+        return
+    perfil_str = str(PASTA_PERFIL).replace("\\", "/").lower()
+    ps = (
+        "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' OR Name='msedge.exe'\" | "
+        "Where-Object { $_.CommandLine -and "
+        f"  $_.CommandLine.Replace('\\\\','/').ToLower().Contains('{perfil_str}') "
+        "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    )
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                       capture_output=True, timeout=10,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        time.sleep(1.0)
+    except Exception:
+        pass
+
+
+def garantir_chrome(url: str | None = None) -> None:
+    """Garante que existe UMA janela do Chrome do robo aberta com a porta de
+    controle (perfil proprio data/hotmart_profile). Se ja estiver aberta, reusa.
+    O login feito nessa janela vale pra todas as publicacoes (mesma janela)."""
+    if _cdp_ativo():
+        return
+    exe = _chrome_exe()
+    if not exe:
+        raise RoboError("Não encontrei o Chrome/Edge instalado.")
+    _matar_chrome_do_perfil()
     PASTA_PERFIL.mkdir(parents=True, exist_ok=True)
-    opts = {
-        "user_data_dir": str(PASTA_PERFIL),
-        "headless": False,
-        "viewport": {"width": 1366, "height": 850},
-        "args": [
-            "--disable-blink-features=AutomationControlled",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--profile-directory=Default",
-        ],
-    }
-    for canal in ("chrome", "msedge", None):
-        try:
-            if canal:
-                return p.chromium.launch_persistent_context(channel=canal, **opts)
-            return p.chromium.launch_persistent_context(**opts)
-        except Exception:
-            continue
-    raise RoboError("Não consegui abrir nenhum navegador (Chrome/Edge/Chromium).")
+    args = [
+        exe,
+        f"--remote-debugging-port={PORTA_CDP}",
+        f"--user-data-dir={PASTA_PERFIL}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-blink-features=AutomationControlled",
+        "--profile-directory=Default",
+    ]
+    if url:
+        args.append(url)
+    subprocess.Popen(args, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    # espera a porta de controle subir (ate ~15s)
+    for _ in range(30):
+        if _cdp_ativo():
+            return
+        time.sleep(0.5)
+    raise RoboError("O Chrome do robô não subiu a tempo. Tente de novo.")
+
+
+def _conectar(p):
+    """Conecta na janela do Chrome ja aberta (CDP) e devolve (browser, page)."""
+    if not _cdp_ativo():
+        raise RoboError(
+            "A janela do robô não está aberta. Clique em 'Abrir Hotmart (login)', "
+            "faça o login e DEIXE a janela aberta — o robô usa ela pra publicar."
+        )
+    browser = p.chromium.connect_over_cdp(URL_CDP)
+    ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+    return browser, page
 
 
 def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
@@ -369,9 +436,8 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
 
     job.estado = "rodando"
     with sync_playwright() as p:
-        ctx = _abrir_navegador(p)
+        browser, page = _conectar(p)  # conecta na janela ja aberta e logada
         try:
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.set_default_timeout(20000)
             tela = Tela(page, job, pasta_shots)
 
@@ -379,10 +445,21 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo na Hotmart...")
             page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
+            # rede de seguranca: se caiu no login (com dados ja preenchidos), entra sozinho
             if any(m in page.url for m in hm.MARCADORES_LOGIN):
+                job.log("Caiu na tela de login — tentando entrar (dados já preenchidos)...", "aviso")
+                try:
+                    tela.clicar("btn_entrar_login")
+                    page.wait_for_timeout(4000)
+                    page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
+                    page.wait_for_timeout(2500)
+                except RoboError:
+                    pass
+            if any(m in page.url for m in hm.MARCADORES_LOGIN):
+                tela.shot("erro_login")
                 raise RoboError(
-                    "Você não está logado na Hotmart nesse perfil. "
-                    "Use o botão 'Abrir Hotmart (login)', faça o login e tente de novo."
+                    "Ainda está na tela de login. Vá na janela do robô (já aberta), "
+                    "faça o login na Hotmart e clique publicar de novo."
                 )
             tela.shot("inicio")
 
@@ -478,41 +555,21 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 job.log("Não vi a mensagem 'Enviado para aprovação' — confira o print final.", "aviso")
             tela.shot("finalizado")
         finally:
-            try:
-                ctx.close()
-            except Exception:
-                pass
+            # NAO fecha a janela — ela fica aberta e logada pra proxima publicacao.
+            # O Chrome foi aberto por nos (subprocess), fora do Playwright; ao sair
+            # do 'with sync_playwright' so o controle CDP e desconectado.
+            pass
 
 
 # ---------------------------------------------------------------------------
 # Janela de login (primeira configuracao do perfil)
 # ---------------------------------------------------------------------------
 def abrir_login() -> None:
-    """Abre o navegador do robo na Hotmart pro operador logar 1x. Bloqueia ate fechar."""
+    """Abre (ou reusa) a janela do Chrome do robo na Hotmart pro operador logar.
+    A janela FICA ABERTA — o robo se conecta nela na hora de publicar, entao o
+    login vale pra todas as publicacoes (mesma janela, sem relogar)."""
     global _JOB
     with _TRAVA:
         if _JOB is not None and _JOB.estado in ESTADOS_ATIVOS:
             raise RoboError("Tem uma publicação em andamento — feche antes de abrir o login.")
-
-    def _rodar_login():
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            ctx = _abrir_navegador(p)
-            try:
-                page = ctx.pages[0] if ctx.pages else ctx.new_page()
-                page.goto(hm.URL_APP, wait_until="domcontentloaded")
-                # espera o operador fechar a janela (ate 15 min)
-                limite = time.time() + 900
-                while time.time() < limite:
-                    time.sleep(2)
-                    if not ctx.pages:
-                        break
-            except Exception:
-                pass
-            finally:
-                try:
-                    ctx.close()
-                except Exception:
-                    pass
-
-    threading.Thread(target=_rodar_login, daemon=True).start()
+    garantir_chrome(hm.URL_APP)
