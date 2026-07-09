@@ -375,30 +375,18 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             page.set_default_timeout(20000)
             tela = Tela(page, job, pasta_shots)
 
-            # ---- 1. abrir e checar login ---------------------------------
-            job.marcar_etapa("abrir", "Abrindo a Hotmart...")
-            page.goto(hm.URL_PRODUTOS, wait_until="domcontentloaded")
+            # ---- 1. abrir direto o formulario de eBook novo + checar login ----
+            job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo na Hotmart...")
+            page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
             if any(m in page.url for m in hm.MARCADORES_LOGIN):
                 raise RoboError(
                     "Você não está logado na Hotmart nesse perfil. "
-                    "Use o botão 'Abrir Hotmart (login)' na aba Config, faça o login e tente de novo."
+                    "Use o botão 'Abrir Hotmart (login)', faça o login e tente de novo."
                 )
             tela.shot("inicio")
 
-            # ---- 2. criar produto ebook -----------------------------------
-            job.marcar_etapa("criar_produto", "Criando produto tipo eBook...")
-            tela.clicar("btn_criar_produto")
-            page.wait_for_timeout(1500)
-            tela.clicar("opcao_ebook")
-            page.wait_for_timeout(1000)
-            try:
-                tela.clicar("btn_continuar_tipo")
-            except RoboError:
-                pass  # alguns fluxos pulam essa tela
-            tela.shot("tipo_escolhido")
-
-            # ---- 3. informacoes basicas ------------------------------------
+            # ---- 2. informacoes basicas (ja estamos nela) ------------------
             job.marcar_etapa("informacoes_basicas", "Preenchendo informações básicas...")
             tela.preencher("campo_nome", item["titulo"])
             tela.preencher("campo_descricao", item["descricao"])

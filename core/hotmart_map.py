@@ -14,6 +14,9 @@ from __future__ import annotations
 
 URL_APP = "https://app.hotmart.com"
 URL_PRODUTOS = f"{URL_APP}/products"
+# URL direta do formulario "Informacoes basicas" de um eBook novo (formato 4).
+# Cai direto na tela de preencher — pula "Criar produto > eBook > Continuar".
+URL_CRIAR_EBOOK = f"{URL_APP}/products/add/4/info"
 
 # Se a URL cair em algum desses pedacos, o usuario NAO esta logado
 MARCADORES_LOGIN = ("sso.hotmart.com", "/login", "signin")

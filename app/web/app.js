@@ -11,6 +11,8 @@ const estado = {
   scanPasta: "",
   abertos: new Set(),      // ids de produtos com card expandido
   ocupados: new Set(),     // chaves "pid" ou "pid:codigo" com operacao em andamento
+  publicandoFila: false,   // fila "Publicar todos" em andamento
+  filaCancelada: false,    // pediram pra cancelar a fila
 };
 
 const $ = (id) => document.getElementById(id);
@@ -648,10 +650,13 @@ async function publicarTodos() {
   if (!confirm(msg)) return;
 
   const btn = $("btn-publicar-tudo");
-  btn.classList.add("ocupado"); btn.disabled = true;
+  estado.filaCancelada = false;
+  estado.publicandoFila = true;
+  btn.textContent = "⛔ Cancelar fila";
   let feitos = 0, pulados = 0;
   try {
     for (let n = 0; n < fila.length; n++) {
+      if (estado.filaCancelada) { toast("Fila cancelada.", "aviso"); break; }
       const item = fila[n];
       // re-checa: o item ainda está 'revisado'? (pode ter mudado)
       let prod = null;
@@ -666,16 +671,27 @@ async function publicarTodos() {
 
       iniciarPollPublicacao();
       const fim = await aguardarFimPublicacao();
-      if (fim === "cancelado") { toast("Fila de publicação cancelada.", "aviso"); break; }
+      if (fim === "cancelado" || estado.filaCancelada) { toast("Fila cancelada.", "aviso"); break; }
       feitos++;
     }
   } finally {
-    btn.classList.remove("ocupado"); btn.disabled = false;
+    estado.publicandoFila = false;
+    btn.textContent = "📤 Publicar todos";
     await carregarProdutos();
   }
   toast(`Fila concluída: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
 }
-$("btn-publicar-tudo").addEventListener("click", publicarTodos);
+
+async function cancelarFila() {
+  estado.filaCancelada = true;
+  toast("Cancelando a fila (o item atual é interrompido)...", "aviso");
+  try { await api("POST", "/api/publicacao/cancelar"); } catch (_) {}
+}
+
+$("btn-publicar-tudo").addEventListener("click", () => {
+  if (estado.publicandoFila) cancelarFila();
+  else publicarTodos();
+});
 
 // Espera a publicação atual chegar num estado terminal (fora das pausas humanas).
 async function aguardarFimPublicacao() {
