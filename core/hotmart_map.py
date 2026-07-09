@@ -197,8 +197,9 @@ MAPA = {
     ],
     "btn_convidar_coprodutor": [
         {"tipo": "role", "role": "button", "nome": "Convidar Coprodutor"},
-        {"tipo": "css", "css": "button.hot-btn--primary"},
+        {"tipo": "role", "role": "button", "nome": "Convidar"},
         {"tipo": "texto", "texto": "Convidar Coprodutor"},
+        {"tipo": "css", "css": "button.hot-btn--primary"},
     ],
     # E-mail do coprodutor: input com name "Email do Coprodutor" / class js-input-email.
     "campo_email_coprodutor": [

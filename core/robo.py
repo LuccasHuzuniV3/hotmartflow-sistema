@@ -277,7 +277,7 @@ class Tela:
         except Exception:
             pass  # screenshot nunca derruba o fluxo
 
-    def _localizar(self, chave: str):
+    def _localizar(self, chave: str, timeout: int = 4000):
         import re
         candidatos = hm.MAPA[chave]
         for c in candidatos:
@@ -292,7 +292,7 @@ class Tela:
                     loc = self.page.get_by_placeholder(re.compile(c["texto"], re.I))
                 else:
                     loc = self.page.locator(c["css"])
-                loc.first.wait_for(state="visible", timeout=4000)
+                loc.first.wait_for(state="visible", timeout=timeout)
                 return loc.first
             except Exception:
                 continue
@@ -302,8 +302,8 @@ class Tela:
             f"Print salvo em data/publicacoes. Corrija o seletor em core/hotmart_map.py."
         )
 
-    def clicar(self, chave: str) -> None:
-        self._localizar(chave).click()
+    def clicar(self, chave: str, timeout: int = 4000) -> None:
+        self._localizar(chave, timeout=timeout).click()
 
     def preencher(self, chave: str, valor: str) -> None:
         """Digita LETRA POR LETRA com delay — a Hotmart reseta o form se o
@@ -718,10 +718,13 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 except Exception:
                     pass
                 page.wait_for_timeout(2500)
+                # a lista de coproducoes carrega async — espera o botao aparecer (ate 20s)
+                if not tela.existe_texto("Convidar", timeout=20000):
+                    job.log("A tela de Coproduções demorou a carregar — tentando mesmo assim...", "aviso")
                 if tela.existe_texto(coprod["email"]) and tela.existe_texto("Pendente"):
                     job.log("Já existe convite Pendente pra esse coprodutor — pulando (evita duplicar).", "aviso")
                 else:
-                    tela.clicar("btn_convidar_coprodutor")
+                    tela.clicar("btn_convidar_coprodutor", timeout=15000)
                     page.wait_for_timeout(2000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
                     tela.escolher_opcao("campo_atuacao", "Sócio do produtor")
