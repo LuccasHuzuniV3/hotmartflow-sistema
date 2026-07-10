@@ -109,6 +109,9 @@ async function carregarConfig() {
   $("cfg-coprod-email").value = s.coproducao.email;
   $("cfg-coprod-pct").value = s.coproducao.percentual;
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
+  $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
+  $("cfg-gmail-email").value = (s.gmail && s.gmail.email) || "";
+  $("cfg-gmail-senha").value = (s.gmail && s.gmail.app_password) || "";
 
   const grid = $("cfg-precos");
   grid.innerHTML = Object.entries(s.precos).map(([tipo, preco]) => `
@@ -142,6 +145,11 @@ $("btn-salvar-config").addEventListener("click", async () => {
       percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
     },
     robo: { delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10) },
+    gmail: {
+      auto: $("cfg-gmail-auto").checked,
+      email: $("cfg-gmail-email").value.trim(),
+      app_password: $("cfg-gmail-senha").value.trim(),
+    },
   };
   try {
     estado.settings = await api("POST", "/api/settings", patch);
@@ -655,10 +663,19 @@ async function publicarTodos() {
   const fila = [];
   for (const p of estado.produtos) {
     for (const i of p.idiomas) {
-      if (i.status === "revisado") fila.push({ pid: p.id, codigo: i.codigo, pais: i.pais, titulo: p.titulo_pt });
+      if (i.status === "revisado") fila.push({
+        pid: p.id, codigo: i.codigo, pais: i.pais, titulo: p.titulo_pt,
+        tipo: p.tipo, numero: p.numero || 0, ordemIdioma: p.idiomas.indexOf(i),
+      });
     }
   }
   if (!fila.length) { toast("Nenhum idioma revisado pra publicar.", "erro"); return; }
+  // ordem SEMPRE: Principal -> Order Bump -> Upsell (depois nº e idioma)
+  const ORDEM_TIPO = { "Principal": 0, "Order Bump": 1, "Upsell": 2 };
+  fila.sort((a, b) =>
+    (ORDEM_TIPO[a.tipo] ?? 9) - (ORDEM_TIPO[b.tipo] ?? 9)
+    || a.numero - b.numero
+    || a.ordemIdioma - b.ordemIdioma);
   const msg = modo === "real"
     ? `Publicar DE VERDADE ${fila.length} cadastro(s) na Hotmart, um a um?\n\nVocê ainda digita cada código e confirma cada finalização.`
     : `Rodar ENSAIO de ${fila.length} cadastro(s), um a um? (nada é enviado)`;

@@ -27,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core import produtos
+from core import gmail_code
 from core import hotmart_map as hm
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -614,6 +615,25 @@ def _conectar(p):
     return browser, page
 
 
+def _obter_codigo_2fa(job: Job, settings: dict, *, desde_ts: float) -> str:
+    """Lê o código 2FA no Gmail (se configurado e ligado); senão pausa pro humano."""
+    gm = settings.get("gmail", {})
+    ligado = gm.get("auto") and (gm.get("email") or "").strip() and (gm.get("app_password") or "").strip()
+    if ligado:
+        job.log("Buscando o código de segurança no Gmail automaticamente...")
+        try:
+            codigo = gmail_code.buscar_codigo(
+                gm["email"], gm["app_password"], desde_ts=desde_ts, timeout=90)
+        except gmail_code.GmailError as e:
+            job.log(f"Gmail: {e}", "aviso")
+            codigo = None
+        if codigo:
+            job.log(f"Código lido do Gmail: {codigo[:2]}**** ✔", "ok")
+            return codigo
+        job.log("Não achei o código no Gmail a tempo — cole na tela, por favor.", "aviso")
+    return job.aguardar_codigo()  # fallback: pausa humana (cola na UI)
+
+
 def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
     from playwright.sync_api import sync_playwright
 
@@ -783,9 +803,10 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     page.wait_for_timeout(2500)
                     # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
                     job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
+                    inicio_2fa = time.time()
                     tela.clicar_por_texto("Li e concordo com as informações")
                     tela.shot("coproducao_revisao")
-                    codigo = job.aguardar_codigo()  # pausa humana: código enviado ao e-mail
+                    codigo = _obter_codigo_2fa(job, s, desde_ts=inicio_2fa)
                     tela.preencher("campo_codigo_2fa", codigo)
                     tela.shot("codigo_preenchido")
                     tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código

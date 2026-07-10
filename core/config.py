@@ -17,6 +17,8 @@ _DEFAULTS = {
     "moeda": "USD",
     "hotmart": {"categoria": "Espiritualidade", "reembolso_dias": 7},
     "coproducao": {"email": "", "percentual": 45},
+    # Leitura automatica do codigo 2FA no Gmail (IMAP + App Password)
+    "gmail": {"email": "", "app_password": "", "auto": False},
     "descricao": {
         "tom": "inspirador, acolhedor e persuasivo",
         "tamanho_min": 400,

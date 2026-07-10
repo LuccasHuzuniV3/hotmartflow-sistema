@@ -171,6 +171,25 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; ...
         </div>
       </div>
 
+      <div class="card config-card">
+        <h2>Código 2FA automático <small>(ler do Gmail)</small></h2>
+        <label class="robo-ensaio" style="margin-bottom:12px">
+          <input type="checkbox" id="cfg-gmail-auto"> Ler o código da coprodução automaticamente do Gmail
+        </label>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>E-mail do Gmail (onde chega o código)</label>
+            <input id="cfg-gmail-email" type="text" spellcheck="false" placeholder="voce@gmail.com">
+          </div>
+          <div class="campo">
+            <label>Senha de app (App Password)
+              <small>— NÃO é a senha normal do Gmail</small></label>
+            <input id="cfg-gmail-senha" type="password" spellcheck="false" placeholder="16 letras">
+          </div>
+        </div>
+        <small>Precisa: IMAP ligado no Gmail + verificação em 2 etapas + uma "Senha de app" gerada em myaccount.google.com/apppasswords. Se falhar, o robô pede o código na tela como antes.</small>
+      </div>
+
       <button id="btn-salvar-config" class="btn primario btn-largo">Salvar configurações</button>
       <div id="config-feedback" class="feedback"></div>
 
