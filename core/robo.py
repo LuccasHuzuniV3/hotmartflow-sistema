@@ -484,6 +484,32 @@ class Tela:
         self.shot(f"erro_botao_{texto}")
         raise RoboError(f"Não achei o botão/opção '{texto}'. Print salvo em data/publicacoes.")
 
+    def ir_para_conteudo(self) -> None:
+        """Vai pra tela de Conteúdo do Produto. Tenta o menu lateral; se ele
+        estiver colapsado/não clicar (comum com 2 contas em janelas menores),
+        clica no botão 'Configurar' do checklist."""
+        try:
+            self.clicar("menu_conteudo", timeout=6000)
+            return
+        except RoboError:
+            self.job.log("Menu 'Conteúdo do Produto' não clicou — usando o 'Configurar' do checklist.", "aviso")
+        self.clicar("btn_configurar_conteudo", timeout=8000)
+
+    def ir_para_coproducao(self) -> None:
+        """Vai pra tela de Coproduções. Tenta o menu lateral; se não achar,
+        clica no lápis (expande o menu colapsado) e tenta de novo."""
+        try:
+            self.clicar("menu_coproducao", timeout=6000)
+            return
+        except RoboError:
+            self.job.log("Menu 'Coproduções' não apareceu — clicando no lápis pra abrir o menu...", "aviso")
+        try:
+            self.clicar("btn_lapis_editar", timeout=6000)
+            self.page.wait_for_timeout(1500)
+        except RoboError:
+            pass
+        self.clicar("menu_coproducao", timeout=10000)
+
     def upload(self, chave: str, arquivos: str | list[str]) -> None:
         if isinstance(arquivos, str):
             arquivos = [arquivos]
@@ -764,7 +790,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.marcar_etapa("conteudo",
                              f"Subindo {len(pdfs)} PDF(s): principal"
                              + (f" + {len(anexos_pdf)} anexo(s)" if anexos_pdf else "") + "...")
-            tela.clicar("menu_conteudo")
+            tela.ir_para_conteudo()
             try:
                 page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
@@ -778,7 +804,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             coprod = s["coproducao"]
             if (coprod.get("email") or "").strip():
                 job.marcar_etapa("coproducao", f"Coprodução: {coprod['email']} ({coprod['percentual']}%)...")
-                tela.clicar("menu_coproducao")
+                tela.ir_para_coproducao()
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:

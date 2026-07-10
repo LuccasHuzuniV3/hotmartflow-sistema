@@ -187,6 +187,18 @@ MAPA = {
         {"tipo": "role", "role": "button", "nome": "Selecione um arquivo"},
         {"tipo": "texto", "texto": "Selecione um arquivo"},
     ],
+    # Fallback: botao "Configurar" do checklist (o 1o e o de Conteudo do Produto),
+    # usado quando o menu lateral esta colapsado/nao clicavel.
+    "btn_configurar_conteudo": [
+        {"tipo": "role", "role": "button", "nome": "^Configurar$"},
+        {"tipo": "texto", "texto": "^Configurar$"},
+    ],
+    # Lapis de edicao (svg fa-pencil) — expande/abre o menu quando colapsado.
+    "btn_lapis_editar": [
+        {"tipo": "css", "css": "svg.fa-pencil"},
+        {"tipo": "css", "css": ".fa-pencil"},
+        {"tipo": "css", "css": "[class*='pencil']"},
+    ],
 
     # ---------- coproducao ----------
     # Menu lateral "Coproduções" tambem e BUTTON.
