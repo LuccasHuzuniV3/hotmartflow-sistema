@@ -59,10 +59,7 @@ def test_simulado_fluxo_completo():
     assert aguardar(lambda: job.estado == "aguardando_2fa")
     job.entregar_codigo("123456")
 
-    # chega na pausa de confirmacao
-    assert aguardar(lambda: job.estado == "aguardando_confirmacao")
-    job.confirmar()
-
+    # finaliza direto (sem pausa de confirmacao)
     assert aguardar(lambda: job.estado == "concluido")
     # simulado NAO marca publicado — volta pra revisado
     assert produtos.obter(reg["id"])["idiomas"][0]["status"] == "revisado"

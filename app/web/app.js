@@ -109,6 +109,7 @@ async function carregarConfig() {
   $("cfg-coprod-email").value = s.coproducao.email;
   $("cfg-coprod-pct").value = s.coproducao.percentual;
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
+  $("cfg-cdp-port").value = (s.robo && s.robo.cdp_port) || 9222;
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
   $("cfg-gmail-email").value = (s.gmail && s.gmail.email) || "";
   $("cfg-gmail-senha").value = (s.gmail && s.gmail.app_password) || "";
@@ -144,7 +145,10 @@ $("btn-salvar-config").addEventListener("click", async () => {
       email: $("cfg-coprod-email").value.trim(),
       percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
     },
-    robo: { delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10) },
+    robo: {
+      delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10),
+      cdp_port: parseInt($("cfg-cdp-port").value || "9222", 10),
+    },
     gmail: {
       auto: $("cfg-gmail-auto").checked,
       email: $("cfg-gmail-email").value.trim(),

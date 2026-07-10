@@ -12,12 +12,12 @@ PASSO A PASSO
    Ex.:  C:\CRIACAO\HOTMART\HotmartFlow      (conta 1)
          C:\CRIACAO\HOTMART\HotmartFlow-2    (conta 2)
 
-2) Na SEGUNDA pasta, abra o start.bat num editor (Bloco de Notas)
-   e troque a linha:
-        set HOTMARTFLOW_CDP_PORT=9222
-   por:
-        set HOTMARTFLOW_CDP_PORT=9223
-   (isso evita que as duas briguem pelo Chrome. A primeira fica no 9222.)
+2) Abra as DUAS pastas (start.bat) e, na aba CONFIG de cada uma,
+   ajuste o campo "Porta do Chrome (CDP)":
+        1a copia:  9222   (deixe como esta)
+        2a copia:  9223
+   Salvar. (Isso evita que as duas briguem pelo Chrome. Fica na Config,
+   entao o botao "Atualizar" NAO apaga mais essa configuracao.)
 
 3) Abra o start.bat das DUAS pastas (dois cliques em cada).
    Cada uma abre sua própria janela.

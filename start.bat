@@ -34,12 +34,9 @@ REM Precisa: WSL2 + Ubuntu + agy instalado e autenticado dentro do Ubuntu (igual
 REM Pra desativar (agy Windows nativo), comente a linha abaixo com REM.
 set HOTMARTFLOW_USE_WSL=1
 
-REM ============================================================
-REM 2 CONTAS EM PARALELO: nesta copia deixe 9222 (padrao).
-REM Na SEGUNDA copia do app (outra pasta, outra conta Hotmart),
-REM troque a linha abaixo por:  set HOTMARTFLOW_CDP_PORT=9223
-REM ============================================================
-set HOTMARTFLOW_CDP_PORT=9222
+REM 2 CONTAS EM PARALELO: a porta do Chrome agora fica na aba CONFIG do painel
+REM (campo "Porta do Chrome"), NAO aqui — assim o botao Atualizar nao apaga.
+REM Na 1a copia deixe 9222; na 2a copia coloque 9223 na Config.
 
 echo.
 echo Iniciando HotmartFlow...

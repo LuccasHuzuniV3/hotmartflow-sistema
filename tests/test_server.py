@@ -379,9 +379,7 @@ def test_publicacao_simulada_ponta_a_ponta(cliente, pasta_ebooks):
     aguardar_estado(cliente, "aguardando_2fa")
     assert cliente.post("/api/publicacao/codigo", json={"codigo": "123456"}).status_code == 200
 
-    aguardar_estado(cliente, "aguardando_confirmacao")
-    assert cliente.post("/api/publicacao/confirmar").status_code == 200
-
+    # finaliza direto (sem pausa de confirmação)
     job = aguardar_estado(cliente, "concluido")
     assert any("simulado" in m["texto"].lower() for m in job["mensagens"])
 

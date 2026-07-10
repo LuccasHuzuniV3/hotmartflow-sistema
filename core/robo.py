@@ -12,9 +12,10 @@ Arquitetura:
       "simulado" -> nao abre navegador; percorre as etapas com delays. Serve
                     pra testar a UI e treinar o operador.
 
-Regras de seguranca (decisoes de projeto — nao relaxar):
-  - NUNCA clica "Finalizar Cadastro" sem job.aguardar_confirmacao() liberado.
-  - Codigo 2FA da coproducao e SEMPRE humano (digitado na UI do app).
+Regras de projeto:
+  - Finaliza o cadastro DIRETO (sem pausa de confirmacao) — a pedido do usuario.
+  - Codigo 2FA da coproducao: automatico via Gmail se configurado, senao pausa
+    pro humano colar na UI.
   - Antes de convidar coprodutor, checa se ja existe convite Pendente.
 """
 from __future__ import annotations
@@ -33,10 +34,22 @@ from core import hotmart_map as hm
 RAIZ = Path(__file__).resolve().parent.parent
 PASTA_PERFIL = RAIZ / "data" / "hotmart_profile"
 PASTA_PUBLICACOES = RAIZ / "data" / "publicacoes"
-# Porta de controle do Chrome do robo (conecta na janela ja aberta).
-# Configuravel pra rodar 2 copias do app em paralelo (2 contas) sem colidir:
-# a 2a copia seta HOTMARTFLOW_CDP_PORT=9223 no start.bat.
-PORTA_CDP = int(os.environ.get("HOTMARTFLOW_CDP_PORT", "9222"))
+def _porta_cdp() -> int:
+    """Porta de controle do Chrome (CDP). Vem da CONFIG (robo.cdp_port) — assim
+    cada cópia do app (2 contas) usa uma porta diferente SEM depender do start.bat
+    (que o 'Atualizar' sobrescreve). Fallback: env var, senão 9222."""
+    try:
+        from core import config as _cfg
+        p = _cfg.carregar_settings().get("robo", {}).get("cdp_port")
+        if p:
+            return int(p)
+    except Exception:
+        pass
+    return int(os.environ.get("HOTMARTFLOW_CDP_PORT", "9222"))
+
+
+def _url_cdp() -> str:
+    return f"http://127.0.0.1:{_porta_cdp()}"
 
 ESTADOS_ATIVOS = ("iniciando", "rodando", "aguardando_2fa", "aguardando_confirmacao")
 MODOS = ("real", "ensaio", "simulado")
@@ -254,8 +267,7 @@ def _executar_simulado(job: Job) -> None:
     job.log(f"Código recebido ({codigo[:2]}****) — convite enviado (simulado).")
     time.sleep(_DELAY_SIMULADO)
 
-    job.marcar_etapa("finalizar", "Todas as etapas verdes (simulado).")
-    job.aguardar_confirmacao()
+    job.marcar_etapa("finalizar", "Finalizando o cadastro (simulado)...")
     job.log("Finalizar Cadastro clicado (simulado).")
     time.sleep(_DELAY_SIMULADO)
 
@@ -307,7 +319,7 @@ class Tela:
                 for ctx in contextos:
                     try:
                         loc = self._loc_no_ctx(ctx, c).first
-                        loc.wait_for(state="visible", timeout=900)
+                        loc.wait_for(state="visible", timeout=600)
                         return loc
                     except Exception:
                         continue
@@ -351,50 +363,58 @@ class Tela:
         self.page.wait_for_timeout(250)
 
     def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
-        """Combobox de busca da Hotmart (input#dropdown-input): clica pra abrir,
-        DIGITA o texto pra filtrar, e clica na opcao (<hot-select-option>) que
-        aparece. A opcao fica 'hidden' enquanto o dropdown esta fechado."""
+        """Dropdown de busca (hot-select / selectize): abre, tenta clicar direto na
+        opção (rápido, p/ opções já visíveis como a 1ª); se não achar, DIGITA pra
+        filtrar e tenta de novo. A opção fica 'hidden' com o dropdown fechado."""
         import re
         campo = self._localizar(chave_campo)
         campo.click()               # abre o dropdown
         self.page.wait_for_timeout(200)
-        # filtro de dropdown pode ser RAPIDO — o anti-bot da Hotmart so afeta os
-        # campos de texto grandes (nome/descricao), nao os campos de busca.
+        alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
+        sel = "hot-select-option, .selectize-dropdown .option, [data-selectable]"
+
+        # candidatos EXATOS (nao clicam opcao errada) — usados na tentativa rapida
+        def exatas(ctx):
+            return [
+                ctx.locator(sel).filter(has_text=alvo),
+                ctx.get_by_role("option", name=texto_opcao, exact=True),
+                ctx.locator(sel, has_text=texto_opcao),
+                ctx.get_by_text(alvo),
+            ]
+
+        def tentar(fabricas, tmo):
+            for ctx in self._contextos():
+                for loc in fabricas(ctx):
+                    try:
+                        loc.first.wait_for(state="visible", timeout=tmo)
+                        loc.first.click()
+                        self.page.wait_for_timeout(150)
+                        return True
+                    except Exception:
+                        continue
+            return False
+
+        # 1) tentativa RÁPIDA sem digitar (pega opções já visíveis, ex.: a 1ª = Sócio)
+        if tentar(exatas, 250):
+            return
+
+        # 2) digita pra filtrar (rápido — dropdown nao sofre anti-bot) e tenta de novo
         delay_filtro = min(self.delay_digitacao, 8)
-        try:                        # digita pra filtrar a lista
+        try:
             campo.press_sequentially(texto_opcao, delay=delay_filtro)
         except Exception:
             try:
                 campo.type(texto_opcao, delay=delay_filtro)
             except Exception:
                 pass
-        self.page.wait_for_timeout(300)
-        alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
+        self.page.wait_for_timeout(250)
 
-        # cobre tanto o <hot-select-option> quanto o dropdown "selectize" da Hotmart
-        sel = "hot-select-option, .selectize-dropdown .option, [data-selectable]"
+        def com_fallback(ctx):
+            return exatas(ctx) + [ctx.locator(sel).first]  # 1a opcao da lista filtrada
 
-        def fabricas(ctx):
-            return [
-                ctx.locator(sel).filter(has_text=alvo),
-                ctx.get_by_role("option", name=texto_opcao, exact=True),
-                ctx.locator(sel, has_text=texto_opcao),
-                ctx.get_by_text(alvo),
-                ctx.locator(sel).first,  # fallback: 1a opcao da lista aberta
-            ]
-
-        for tentativa in range(3):  # a opcao (em iframe ou nao) as vezes demora a renderizar
-            # 1a passada rapida (250ms); se falhar, passadas seguintes mais pacientes
-            tmo = 250 if tentativa == 0 else 700
-            for ctx in self._contextos():
-                for loc in fabricas(ctx):
-                    try:
-                        loc.first.wait_for(state="visible", timeout=tmo)
-                        loc.first.click()
-                        self.page.wait_for_timeout(200)
-                        return
-                    except Exception:
-                        continue
+        for _ in range(2):
+            if tentar(com_fallback, 700):
+                return
             self.page.wait_for_timeout(300)
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
@@ -552,8 +572,6 @@ class Tela:
                 return False
 
 
-URL_CDP = f"http://127.0.0.1:{PORTA_CDP}"
-
 
 def _chrome_exe() -> str | None:
     candidatos = [
@@ -573,7 +591,7 @@ def _cdp_ativo() -> bool:
     """A janela de controle do Chrome ja esta no ar (porta de depuracao respondendo)?"""
     import urllib.request
     try:
-        with urllib.request.urlopen(URL_CDP + "/json/version", timeout=1) as r:
+        with urllib.request.urlopen(_url_cdp() + "/json/version", timeout=1) as r:
             return r.status == 200
     except Exception:
         return False
@@ -613,7 +631,7 @@ def garantir_chrome(url: str | None = None) -> None:
     PASTA_PERFIL.mkdir(parents=True, exist_ok=True)
     args = [
         exe,
-        f"--remote-debugging-port={PORTA_CDP}",
+        f"--remote-debugging-port={_porta_cdp()}",
         f"--user-data-dir={PASTA_PERFIL}",
         "--no-first-run",
         "--no-default-browser-check",
@@ -638,7 +656,7 @@ def _conectar(p):
             "A janela do robô não está aberta. Clique em 'Abrir Hotmart (login)', "
             "faça o login e DEIXE a janela aberta — o robô usa ela pra publicar."
         )
-    browser = p.chromium.connect_over_cdp(URL_CDP)
+    browser = p.chromium.connect_over_cdp(_url_cdp())
     ctx = browser.contexts[0] if browser.contexts else browser.new_context()
     page = ctx.pages[0] if ctx.pages else ctx.new_page()
     return browser, page
@@ -847,13 +865,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             else:
                 job.log("Sem coprodutor configurado — etapa pulada.")
 
-            # ---- 7. finalizar (pausa humana obrigatoria) ---------------------
-            job.marcar_etapa("finalizar", "Voltando ao Painel do produto...")
+            # ---- 7. finalizar (direto, sem pausa) ---------------------------
+            job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")
             tela.clicar("menu_painel")
             page.wait_for_timeout(2000)
             tela.shot("painel_final")
-            job.aguardar_confirmacao()
-            tela.clicar("btn_finalizar_cadastro")
+            tela.clicar("btn_finalizar_cadastro", timeout=15000)
             if not tela.existe_texto("Enviado para aprovação", timeout=15000):
                 job.log("Não vi a mensagem 'Enviado para aprovação' — confira o print final.", "aviso")
             tela.shot("finalizado")

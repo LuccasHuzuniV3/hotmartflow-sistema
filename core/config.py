@@ -26,7 +26,7 @@ _DEFAULTS = {
     },
     "pastas_recentes": [],
     # robo: ensaio = modo seguro; delay_digitacao_ms = ms por tecla (anti-bot Hotmart)
-    "robo": {"ensaio": True, "delay_digitacao_ms": 45},
+    "robo": {"ensaio": True, "delay_digitacao_ms": 45, "cdp_port": 9222},
 }
 
 
