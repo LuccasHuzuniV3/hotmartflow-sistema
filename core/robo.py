@@ -353,15 +353,18 @@ class Tela:
         import re
         campo = self._localizar(chave_campo)
         campo.click()               # abre o dropdown
-        self.page.wait_for_timeout(400)
+        self.page.wait_for_timeout(200)
+        # filtro de dropdown pode ser RAPIDO — o anti-bot da Hotmart so afeta os
+        # campos de texto grandes (nome/descricao), nao os campos de busca.
+        delay_filtro = min(self.delay_digitacao, 8)
         try:                        # digita pra filtrar a lista
-            campo.press_sequentially(texto_opcao, delay=self.delay_digitacao)
+            campo.press_sequentially(texto_opcao, delay=delay_filtro)
         except Exception:
             try:
-                campo.type(texto_opcao, delay=self.delay_digitacao)
+                campo.type(texto_opcao, delay=delay_filtro)
             except Exception:
                 pass
-        self.page.wait_for_timeout(600)
+        self.page.wait_for_timeout(300)
         alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
 
         # cobre tanto o <hot-select-option> quanto o dropdown "selectize" da Hotmart
@@ -376,17 +379,19 @@ class Tela:
                 ctx.locator(sel).first,  # fallback: 1a opcao da lista aberta
             ]
 
-        for _ in range(3):  # a opcao (em iframe ou nao) as vezes demora a renderizar
+        for tentativa in range(3):  # a opcao (em iframe ou nao) as vezes demora a renderizar
+            # 1a passada rapida (250ms); se falhar, passadas seguintes mais pacientes
+            tmo = 250 if tentativa == 0 else 700
             for ctx in self._contextos():
                 for loc in fabricas(ctx):
                     try:
-                        loc.first.wait_for(state="visible", timeout=800)
+                        loc.first.wait_for(state="visible", timeout=tmo)
                         loc.first.click()
-                        self.page.wait_for_timeout(300)
+                        self.page.wait_for_timeout(200)
                         return
                     except Exception:
                         continue
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(300)
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
             f"Não consegui selecionar '{texto_opcao}' no campo {chave_campo}. "
