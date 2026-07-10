@@ -452,21 +452,26 @@ class Tela:
         'Espiritualidade', que na Hotmart e um botao, nao um dropdown)."""
         import re
         alvo = re.compile(rf"^\s*{re.escape(texto)}\s*$", re.I)
-        tentativas = [
-            lambda: self.page.get_by_role("button", name=texto, exact=True),
-            lambda: self.page.get_by_role("radio", name=texto, exact=True),
-            lambda: self.page.locator("button").filter(has_text=alvo),
-            lambda: self.page.get_by_text(alvo),
-        ]
-        for fabricar in tentativas:
-            try:
-                el = fabricar().first
-                el.wait_for(state="visible", timeout=4000)
-                el.click()
-                self.page.wait_for_timeout(300)
-                return
-            except Exception:
-                continue
+
+        def fabricas(ctx):
+            return [
+                ctx.get_by_role("button", name=texto, exact=True),
+                ctx.get_by_role("radio", name=texto, exact=True),
+                ctx.locator("button, label").filter(has_text=alvo),
+                ctx.get_by_text(alvo),
+            ]
+
+        for _ in range(2):  # procura na pagina E nos iframes
+            for ctx in self._contextos():
+                for loc in fabricas(ctx):
+                    try:
+                        loc.first.wait_for(state="visible", timeout=900)
+                        loc.first.click()
+                        self.page.wait_for_timeout(300)
+                        return
+                    except Exception:
+                        continue
+            self.page.wait_for_timeout(400)
         self.shot(f"erro_botao_{texto}")
         raise RoboError(f"Não achei o botão/opção '{texto}'. Print salvo em data/publicacoes.")
 
@@ -761,7 +766,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     page.wait_for_timeout(2000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
                     tela.escolher_opcao("campo_atuacao", "Sócio do produto")
-                    tela.preencher("campo_percentual", str(coprod["percentual"]))
+                    # o campo de % preenche da direita p/ esquerda (money): pra mostrar
+                    # "P,00" digitamos os digitos de P*100 (ex.: 10 -> "1000" -> "10,00").
+                    digitos_pct = str(int(round(float(coprod["percentual"]) * 100)))
+                    tela.preencher("campo_percentual", digitos_pct)
+                    # modelo de coproducao: "parceria de negocio"
+                    tela.clicar_por_texto("Modelo de parceria de negócio")
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
                     tela.clicar("btn_enviar_convite")
