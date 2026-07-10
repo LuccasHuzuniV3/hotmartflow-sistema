@@ -364,13 +364,16 @@ class Tela:
         self.page.wait_for_timeout(600)
         alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
 
+        # cobre tanto o <hot-select-option> quanto o dropdown "selectize" da Hotmart
+        sel = "hot-select-option, .selectize-dropdown .option, [data-selectable]"
+
         def fabricas(ctx):
             return [
-                ctx.locator("hot-select-option").filter(has_text=alvo),
+                ctx.locator(sel).filter(has_text=alvo),
                 ctx.get_by_role("option", name=texto_opcao, exact=True),
-                ctx.locator("hot-select-option", has_text=texto_opcao),
-                ctx.locator("hot-select-option").first,
+                ctx.locator(sel, has_text=texto_opcao),
                 ctx.get_by_text(alvo),
+                ctx.locator(sel).first,  # fallback: 1a opcao da lista aberta
             ]
 
         for _ in range(3):  # a opcao (em iframe ou nao) as vezes demora a renderizar
@@ -757,7 +760,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.clicar("btn_convidar_coprodutor", timeout=15000)
                     page.wait_for_timeout(2000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
-                    tela.escolher_opcao("campo_atuacao", "Sócio do produtor")
+                    tela.escolher_opcao("campo_atuacao", "Sócio do produto")
                     tela.preencher("campo_percentual", str(coprod["percentual"]))
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
