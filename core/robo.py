@@ -33,7 +33,10 @@ from core import hotmart_map as hm
 RAIZ = Path(__file__).resolve().parent.parent
 PASTA_PERFIL = RAIZ / "data" / "hotmart_profile"
 PASTA_PUBLICACOES = RAIZ / "data" / "publicacoes"
-PORTA_CDP = 9222  # porta de controle do Chrome do robo (conecta na janela ja aberta)
+# Porta de controle do Chrome do robo (conecta na janela ja aberta).
+# Configuravel pra rodar 2 copias do app em paralelo (2 contas) sem colidir:
+# a 2a copia seta HOTMARTFLOW_CDP_PORT=9223 no start.bat.
+PORTA_CDP = int(os.environ.get("HOTMARTFLOW_CDP_PORT", "9222"))
 
 ESTADOS_ATIVOS = ("iniciando", "rodando", "aguardando_2fa", "aguardando_confirmacao")
 MODOS = ("real", "ensaio", "simulado")

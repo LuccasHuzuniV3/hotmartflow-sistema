@@ -34,6 +34,13 @@ REM Precisa: WSL2 + Ubuntu + agy instalado e autenticado dentro do Ubuntu (igual
 REM Pra desativar (agy Windows nativo), comente a linha abaixo com REM.
 set HOTMARTFLOW_USE_WSL=1
 
+REM ============================================================
+REM 2 CONTAS EM PARALELO: nesta copia deixe 9222 (padrao).
+REM Na SEGUNDA copia do app (outra pasta, outra conta Hotmart),
+REM troque a linha abaixo por:  set HOTMARTFLOW_CDP_PORT=9223
+REM ============================================================
+set HOTMARTFLOW_CDP_PORT=9222
+
 echo.
 echo Iniciando HotmartFlow...
 python -m app.launcher

@@ -1,0 +1,41 @@
+========================================================
+  RODAR 2 CONTAS HOTMART EM PARALELO (2 cópias do app)
+========================================================
+
+Cada conta = uma PASTA separada do HotmartFlow, com seu próprio
+login, sua própria fila e seu próprio Gmail (código 2FA automático).
+As duas rodam ao mesmo tempo, sem se atrapalhar.
+
+PASSO A PASSO
+-------------
+1) Copie a pasta inteira do HotmartFlow pra um segundo lugar.
+   Ex.:  C:\CRIACAO\HOTMART\HotmartFlow      (conta 1)
+         C:\CRIACAO\HOTMART\HotmartFlow-2    (conta 2)
+
+2) Na SEGUNDA pasta, abra o start.bat num editor (Bloco de Notas)
+   e troque a linha:
+        set HOTMARTFLOW_CDP_PORT=9222
+   por:
+        set HOTMARTFLOW_CDP_PORT=9223
+   (isso evita que as duas briguem pelo Chrome. A primeira fica no 9222.)
+
+3) Abra o start.bat das DUAS pastas (dois cliques em cada).
+   Cada uma abre sua própria janela.
+
+4) Em CADA app, faça uma vez:
+   - Config → "Abrir Hotmart (login)" → logue na conta daquela cópia.
+   - Config → "Código 2FA automático" → ligue e ponha o e-mail/senha-de-app
+     do Gmail que recebe o código DAQUELA conta.
+   - Salvar.
+
+5) Em cada app, aponte a pasta de ebooks e importe os produtos
+   que vão pra AQUELA conta. (Você divide os produtos entre as duas.)
+
+6) Clique "Publicar todos" nas duas. Elas rodam em paralelo e, com o
+   Gmail automático ligado, não precisam que você cole código nenhum.
+
+OBS
+---
+- A porta do painel (7811) se ajusta sozinha na segunda cópia (pega uma livre).
+- As atualizações (botão Atualizar) funcionam em cada cópia normalmente.
+- Se quiser uma 3a conta, é o mesmo: outra pasta + HOTMARTFLOW_CDP_PORT=9224.
