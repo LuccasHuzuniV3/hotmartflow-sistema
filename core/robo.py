@@ -774,10 +774,16 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.clicar_por_texto("Modelo de parceria de negócio")
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
-                    tela.clicar("btn_enviar_convite")
-                    codigo = job.aguardar_codigo()
+                    tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
+                    page.wait_for_timeout(2500)
+                    # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
+                    job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
+                    tela.clicar_por_texto("Li e concordo com as informações")
+                    tela.shot("coproducao_revisao")
+                    codigo = job.aguardar_codigo()  # pausa humana: código enviado ao e-mail
                     tela.preencher("campo_codigo_2fa", codigo)
-                    tela.clicar("btn_enviar_codigo")
+                    tela.shot("codigo_preenchido")
+                    tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
                     page.wait_for_timeout(3000)
                     tela.shot("coproducao_enviada")
                     if tela.existe_texto("erro", timeout=2000):

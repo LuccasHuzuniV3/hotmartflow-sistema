@@ -227,20 +227,24 @@ MAPA = {
         {"tipo": "texto", "texto": "Li e aceito os termos"},
         {"tipo": "css", "css": "input[type='checkbox']"},
     ],
-    # Botao final do convite: "Continuar" (nao "Enviar convite").
+    # Botao do formulario: "Continuar" (leva pra tela de revisao).
     "btn_enviar_convite": [
         {"tipo": "role", "role": "button", "nome": "^Continuar$"},
         {"tipo": "role", "role": "button", "nome": "Enviar convite"},
         {"tipo": "role", "role": "button", "nome": "^Enviar$"},
     ],
-    "campo_codigo_2fa": [
-        {"tipo": "label", "texto": "código"},
-        {"tipo": "css", "css": "input[autocomplete='one-time-code']"},
-        {"tipo": "css", "css": "input[maxlength='6']"},
+    # Tela de REVISAO do convite: botao final "Enviar convite de coprodução".
+    "btn_enviar_convite_final": [
+        {"tipo": "role", "role": "button", "nome": "Enviar convite de coprodução"},
+        {"tipo": "role", "role": "button", "nome": "Enviar convite"},
+        {"tipo": "texto", "texto": "Enviar convite de coprodução"},
     ],
-    "btn_enviar_codigo": [
-        {"tipo": "role", "role": "button", "nome": "Enviar"},
-        {"tipo": "role", "role": "button", "nome": "Confirmar"},
+    # Chave de seguranca (2FA) — input.js-safety-key, name "Chave de segurança enviada por email".
+    "campo_codigo_2fa": [
+        {"tipo": "css", "css": "input.js-safety-key"},
+        {"tipo": "label", "texto": "Chave de segurança enviada por email"},
+        {"tipo": "placeholder", "texto": "Digite a chave de segurança"},
+        {"tipo": "css", "css": "input[autocomplete='one-time-code']"},
     ],
     "marcador_convite_pendente": [
         {"tipo": "texto", "texto": "Pendente"},
