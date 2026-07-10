@@ -277,30 +277,49 @@ class Tela:
         except Exception:
             pass  # screenshot nunca derruba o fluxo
 
-    def _localizar(self, chave: str, timeout: int = 4000):
+    def _loc_no_ctx(self, ctx, c):
+        """Monta o locator de um candidato num contexto (página OU iframe)."""
         import re
+        if c["tipo"] == "role":
+            return ctx.get_by_role(c["role"], name=re.compile(c["nome"], re.I))
+        if c["tipo"] == "texto":
+            return ctx.get_by_text(re.compile(c["texto"], re.I))
+        if c["tipo"] == "label":
+            return ctx.get_by_label(re.compile(c["texto"], re.I))
+        if c["tipo"] == "placeholder":
+            return ctx.get_by_placeholder(re.compile(c["texto"], re.I))
+        return ctx.locator(c["css"])
+
+    def _localizar(self, chave: str, timeout: int = 4000):
+        """Procura o elemento na página E em TODOS os iframes, tentando de novo
+        ate 'timeout' — a Hotmart embute telas (coprodução etc.) em iframe, e um
+        get_by_role na página principal nao enxerga o que esta dentro do frame."""
         candidatos = hm.MAPA[chave]
-        for c in candidatos:
-            try:
-                if c["tipo"] == "role":
-                    loc = self.page.get_by_role(c["role"], name=re.compile(c["nome"], re.I))
-                elif c["tipo"] == "texto":
-                    loc = self.page.get_by_text(re.compile(c["texto"], re.I))
-                elif c["tipo"] == "label":
-                    loc = self.page.get_by_label(re.compile(c["texto"], re.I))
-                elif c["tipo"] == "placeholder":
-                    loc = self.page.get_by_placeholder(re.compile(c["texto"], re.I))
-                else:
-                    loc = self.page.locator(c["css"])
-                loc.first.wait_for(state="visible", timeout=timeout)
-                return loc.first
-            except Exception:
-                continue
+        fim = time.time() + timeout / 1000.0
+        primeira = True
+        while True:
+            contextos = [self.page] + list(self.page.frames)  # pagina + iframes
+            for c in candidatos:
+                for ctx in contextos:
+                    try:
+                        loc = self._loc_no_ctx(ctx, c).first
+                        loc.wait_for(state="visible", timeout=900)
+                        return loc
+                    except Exception:
+                        continue
+            if time.time() >= fim and not primeira:
+                break
+            primeira = False
+            self.page.wait_for_timeout(500)
         self.shot(f"erro_{chave}")
         raise RoboError(
-            f"Não achei '{chave}' na tela da Hotmart. "
+            f"Não achei '{chave}' na tela da Hotmart (procurei na página e nos iframes). "
             f"Print salvo em data/publicacoes. Corrija o seletor em core/hotmart_map.py."
         )
+
+    def _contextos(self):
+        """Página principal + todos os iframes (a Hotmart embute telas em iframe)."""
+        return [self.page] + list(self.page.frames)
 
     def clicar(self, chave: str, timeout: int = 4000) -> None:
         self._localizar(chave, timeout=timeout).click()
@@ -344,22 +363,27 @@ class Tela:
                 pass
         self.page.wait_for_timeout(600)
         alvo = re.compile(rf"^\s*{re.escape(texto_opcao)}\s*$", re.I)
-        tentativas = [
-            lambda: self.page.locator("hot-select-option").filter(has_text=alvo),
-            lambda: self.page.get_by_role("option", name=texto_opcao, exact=True),
-            lambda: self.page.locator("hot-select-option", has_text=texto_opcao),
-            lambda: self.page.locator("hot-select-option").first,
-            lambda: self.page.get_by_text(alvo),
-        ]
-        for fabricar in tentativas:
-            try:
-                opcao = fabricar().first
-                opcao.wait_for(state="visible", timeout=4000)
-                opcao.click()
-                self.page.wait_for_timeout(300)
-                return
-            except Exception:
-                continue
+
+        def fabricas(ctx):
+            return [
+                ctx.locator("hot-select-option").filter(has_text=alvo),
+                ctx.get_by_role("option", name=texto_opcao, exact=True),
+                ctx.locator("hot-select-option", has_text=texto_opcao),
+                ctx.locator("hot-select-option").first,
+                ctx.get_by_text(alvo),
+            ]
+
+        for _ in range(3):  # a opcao (em iframe ou nao) as vezes demora a renderizar
+            for ctx in self._contextos():
+                for loc in fabricas(ctx):
+                    try:
+                        loc.first.wait_for(state="visible", timeout=800)
+                        loc.first.click()
+                        self.page.wait_for_timeout(300)
+                        return
+                    except Exception:
+                        continue
+            self.page.wait_for_timeout(400)
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
             f"Não consegui selecionar '{texto_opcao}' no campo {chave_campo}. "
@@ -470,13 +494,19 @@ class Tela:
             self.page.wait_for_timeout(1500)
 
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
+        """Procura o texto na página E nos iframes, tentando ate 'timeout'."""
         import re
-        try:
-            self.page.get_by_text(re.compile(re.escape(texto), re.I)).first.wait_for(
-                state="visible", timeout=timeout)
-            return True
-        except Exception:
-            return False
+        alvo = re.compile(re.escape(texto), re.I)
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for ctx in self._contextos():
+                try:
+                    ctx.get_by_text(alvo).first.wait_for(state="visible", timeout=600)
+                    return True
+                except Exception:
+                    continue
+            if time.time() >= fim:
+                return False
 
 
 URL_CDP = f"http://127.0.0.1:{PORTA_CDP}"
