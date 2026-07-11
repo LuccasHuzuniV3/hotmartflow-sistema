@@ -32,9 +32,11 @@ def parse_titulos(texto: str) -> dict:
 
     Retorna:
         {"principal": str|None, "bumps": {n: titulo}, "upsells": {n: titulo},
+         "bonus": {n: titulo}, "extras": {n: titulo},
          "ignoradas": [{"linha", "motivo"}]}
     """
-    resultado = {"principal": None, "bumps": {}, "upsells": {}, "ignoradas": []}
+    resultado = {"principal": None, "bumps": {}, "upsells": {},
+                 "bonus": {}, "extras": {}, "ignoradas": []}
 
     for linha in (texto or "").splitlines():
         bruta = linha.strip()
@@ -62,8 +64,16 @@ def parse_titulos(texto: str) -> dict:
                 resultado["ignoradas"].append({"linha": bruta, "motivo": "opsell sem número"})
             else:
                 resultado["upsells"][numero] = titulo
-        else:  # bonus / extra — anexos nao tem campo de titulo no cadastro
-            resultado["ignoradas"].append({"linha": bruta, "motivo": "bônus/extra (anexo, sem título no cadastro)"})
+        elif rotulo == "bonus":
+            if numero is None:
+                resultado["ignoradas"].append({"linha": bruta, "motivo": "bônus sem número"})
+            else:
+                resultado["bonus"][numero] = titulo
+        else:  # extra
+            if numero is None:
+                resultado["ignoradas"].append({"linha": bruta, "motivo": "extra sem número"})
+            else:
+                resultado["extras"][numero] = titulo
 
     return resultado
 

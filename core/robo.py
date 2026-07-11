@@ -21,7 +21,9 @@ Regras de projeto:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -545,26 +547,57 @@ class Tela:
             arquivos = [arquivos]
         self.page.locator(hm.MAPA[chave][0]["css"]).first.set_input_files(arquivos)
 
-    def upload_conteudo(self, arquivos: list[str]) -> None:
+    def upload_conteudo(self, itens: list[tuple[str, str]]) -> None:
         """Upload na tela de Conteúdo — UM ARQUIVO POR VEZ.
 
         Motivo: como o robô se conecta ao Chrome já aberto (CDP), o Playwright
         limita a transferencia a 50MB por chamada. Mandando 1 PDF de cada vez
         (cada um < 50MB) contornamos o limite, e cada clique no botao ADICIONA
-        o arquivo na lista (nao substitui)."""
-        if isinstance(arquivos, str):
-            arquivos = [arquivos]
-        for n, arq in enumerate(arquivos, 1):
-            nome = Path(arq).name
-            self.job.log(f"Enviando arquivo {n}/{len(arquivos)}: {nome}...")
-            with self.page.expect_file_chooser() as fc:
-                self.clicar("btn_selecione_arquivo")
-            fc.value.set_files(arq)
-            # espera esse arquivo aparecer na lista antes de mandar o proximo
-            if not self.existe_texto(nome, timeout=300_000):
-                self.shot(f"erro_upload_{n}")
-                raise RoboError(f"O arquivo '{nome}' não terminou de subir em 5 min.")
-            self.page.wait_for_timeout(1500)
+        o arquivo na lista (nao substitui).
+
+        `itens` = lista de (caminho, nome_cliente). O que o cliente ve na Hotmart
+        e o NOME DO ARQUIVO, entao cada PDF e copiado pra uma pasta temporaria
+        renomeado pro `nome_cliente` (titulo traduzido: do principal ou do bonus).
+        O arquivo original no disco NAO e alterado. Se `nome_cliente` vier vazio,
+        mantem o nome original. Nomes finais iguais ganham um numero pra nao
+        colidir ('Titulo.pdf', 'Titulo 2.pdf')."""
+        temp_dir = tempfile.mkdtemp(prefix="hmflow_up_")
+        try:
+            arquivos = self._preparar_uploads(itens, temp_dir)
+            for n, arq in enumerate(arquivos, 1):
+                nome = Path(arq).name
+                self.job.log(f"Enviando arquivo {n}/{len(arquivos)}: {nome}...")
+                with self.page.expect_file_chooser() as fc:
+                    self.clicar("btn_selecione_arquivo")
+                fc.value.set_files(arq)
+                # espera esse arquivo aparecer na lista antes de mandar o proximo
+                if not self.existe_texto(nome, timeout=300_000):
+                    self.shot(f"erro_upload_{n}")
+                    raise RoboError(f"O arquivo '{nome}' não terminou de subir em 5 min.")
+                self.page.wait_for_timeout(1500)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _preparar_uploads(self, itens: list[tuple[str, str]], destino: str) -> list[str]:
+        """Copia cada arquivo pra `destino` com o nome desejado (titulo traduzido),
+        preservando a extensao e evitando nomes duplicados. Retorna os caminhos
+        das copias, na ordem original."""
+        copias: list[str] = []
+        usados: set[str] = set()
+        for caminho, nome_cliente in itens:
+            ext = Path(caminho).suffix  # preserva .pdf/.epub/etc
+            base = _nome_arquivo_seguro(nome_cliente) if (nome_cliente or "").strip() \
+                else Path(caminho).stem
+            final = f"{base}{ext}"
+            n = 1
+            while final.lower() in usados:  # nome repetido -> numera
+                n += 1
+                final = f"{base} {n}{ext}"
+            usados.add(final.lower())
+            alvo = str(Path(destino) / final)
+            shutil.copy2(caminho, alvo)
+            copias.append(alvo)
+        return copias
 
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         """Procura o texto na página E nos iframes, tentando ate 'timeout'."""
@@ -581,6 +614,17 @@ class Tela:
             if time.time() >= fim:
                 return False
 
+
+
+def _nome_arquivo_seguro(titulo: str) -> str:
+    """Transforma o titulo traduzido num nome de arquivo valido no Windows.
+    Remove os caracteres proibidos (\\ / : * ? \" < > |), colapsa espacos e
+    apara pontos/espacos das pontas. Se sobrar vazio, usa 'ebook'."""
+    import re
+    limpo = re.sub(r'[\\/:*?"<>|]', " ", titulo or "")
+    limpo = re.sub(r"\s+", " ", limpo).strip(" .")
+    limpo = limpo[:120].strip(" .")  # nome de arquivo curto o bastante
+    return limpo or "ebook"
 
 
 def _chrome_exe() -> str | None:
@@ -821,20 +865,27 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 job.log(f"Produto na Hotmart: ID {job.hotmart_id}")
 
             # ---- 5. conteudo do produto: menu lateral -> upload dos PDFs ------
-            anexos_pdf = [a["pdf"] for a in item.get("anexos", [])
-                          if a.get("pdf") and Path(a["pdf"]).is_file()]
-            pdfs = [item["pdf"]] + anexos_pdf
+            # o cliente ve o NOME DO ARQUIVO: principal -> titulo traduzido do
+            # produto; cada bonus -> titulo traduzido DELE (cai pro PT ou pro
+            # titulo do principal se o bonus nao tiver titulo).
+            titulo_cliente = item["titulo"] or produto["titulo_pt"]
+            uploads = [(item["pdf"], titulo_cliente)]
+            for a in item.get("anexos", []):
+                if a.get("pdf") and Path(a["pdf"]).is_file():
+                    nome_anexo = a.get("titulo") or a.get("titulo_pt") or titulo_cliente
+                    uploads.append((a["pdf"], nome_anexo))
+            n_anexos = len(uploads) - 1
             job.marcar_etapa("conteudo",
-                             f"Subindo {len(pdfs)} PDF(s): principal"
-                             + (f" + {len(anexos_pdf)} anexo(s)" if anexos_pdf else "") + "...")
+                             f"Subindo {len(uploads)} PDF(s): principal"
+                             + (f" + {n_anexos} anexo(s)" if n_anexos else "") + "...")
             tela.ir_para_conteudo()
             try:
                 page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 pass
             page.wait_for_timeout(2000)
-            tela.upload_conteudo(pdfs)  # sobe 1 por vez e espera cada um
-            job.log(f"{len(pdfs)} arquivo(s) enviado(s) ✔")
+            tela.upload_conteudo(uploads)  # sobe 1 por vez, renomeado, e espera cada um
+            job.log(f"{len(uploads)} arquivo(s) enviado(s) ✔")
             tela.shot("pdf_enviado")
 
             # ---- 6. coproducao ----------------------------------------------

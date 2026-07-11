@@ -153,10 +153,20 @@ def _montar_grupos(registros: list[dict], ignorados: list[dict]) -> list[dict]:
         if reg["papel"] != "anexo":
             continue
         destino, num = reg["dado"]
+        # papel/numero do anexo pela assinatura do nome (bonus 1, extra 2...) —
+        # serve pra casar com o titulo da lista do Discord e traduzir depois.
+        sig = _assinatura(reg["titulo"])
+        papel_anexo, numero_anexo = None, None
+        if sig and sig[0] in ("bonus", "extra"):
+            papel_anexo, numero_anexo = sig[0], sig[1]
         anexo = {
             "nome": reg["titulo"],
             "pdf": str(reg["arquivo"]),
             "capa": achar_capa(reg["arquivo"].parent, reg["arquivo"].stem),
+            "papel": papel_anexo,       # "bonus" | "extra" | None
+            "numero": numero_anexo,     # n do bonus/extra (pra casar o titulo)
+            "titulo_pt": "",            # titulo do bonus em PT (lista do Discord)
+            "titulo": "",               # titulo do bonus traduzido pro idioma
         }
         if destino == "principal":
             candidatos = principais.get(reg["codigo"], [])

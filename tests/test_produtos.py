@@ -188,3 +188,64 @@ def test_atualizacoes_concorrentes_nao_perdem_dados_nem_estouram():
     for item in final["idiomas"]:
         assert item["titulo"] == f"T-{item['codigo']}-4", \
             f"update perdido no idioma {item['codigo']}: {item['titulo']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Titulos dos anexos (bonus) — PT e traduzido
+# ---------------------------------------------------------------------------
+def _grupo_com_bonus():
+    """Principal em 2 idiomas, cada um com 2 anexos bonus (numero 1 e 2)."""
+    def anexos():
+        return [
+            {"nome": "BONUS 1 REDE 2", "pdf": "C:/x/b1.pdf", "capa": None,
+             "papel": "bonus", "numero": 1, "titulo_pt": "", "titulo": ""},
+            {"nome": "BONUS 2 REDE 2", "pdf": "C:/x/b2.pdf", "capa": None,
+             "papel": "bonus", "numero": 2, "titulo_pt": "", "titulo": ""},
+        ]
+    return {
+        "titulo": "Meu Ebook", "tipo": "Principal",
+        "idiomas": [
+            {"codigo": "pt-br", "pais": "Brasil", "pdf": "C:/x/a.pdf", "capa": None,
+             "anexos": anexos()},
+            {"codigo": "de", "pais": "Alemao", "pdf": "C:/x/c.pdf", "capa": None,
+             "anexos": anexos()},
+        ],
+    }
+
+
+def test_definir_titulo_pt_anexos_casa_por_numero_em_todos_idiomas():
+    reg = produtos.criar(_grupo_com_bonus(), pasta_origem="C:/x", precos=PRECOS)
+    n = produtos.definir_titulo_pt_anexos(
+        reg["id"], bonus={1: "Os 10 Hábitos", 2: "O Segredo da Energia"}, extras={})
+    assert n == 4  # 2 bonus x 2 idiomas
+    final = produtos.obter(reg["id"])
+    for item in final["idiomas"]:
+        por_num = {a["numero"]: a["titulo_pt"] for a in item["anexos"]}
+        assert por_num[1] == "Os 10 Hábitos"
+        assert por_num[2] == "O Segredo da Energia"
+
+
+def test_definir_titulo_pt_anexos_aceita_chave_str():
+    reg = produtos.criar(_grupo_com_bonus(), pasta_origem="C:/x", precos=PRECOS)
+    n = produtos.definir_titulo_pt_anexos(reg["id"], bonus={"1": "B Um"}, extras={})
+    assert n == 2  # so o bonus 1, nos 2 idiomas
+    final = produtos.obter(reg["id"])
+    assert final["idiomas"][0]["anexos"][0]["titulo_pt"] == "B Um"
+
+
+def test_definir_titulo_traduzido_anexos_casa_por_titulo_pt():
+    reg = produtos.criar(_grupo_com_bonus(), pasta_origem="C:/x", precos=PRECOS)
+    produtos.definir_titulo_pt_anexos(
+        reg["id"], bonus={1: "Os 10 Hábitos", 2: "O Segredo da Energia"}, extras={})
+    n = produtos.definir_titulo_traduzido_anexos(
+        reg["id"], "de",
+        {"Os 10 Hábitos": "Die 10 Gewohnheiten", "O Segredo da Energia": "Das Energie-Geheimnis"})
+    assert n == 2
+    final = produtos.obter(reg["id"])
+    de = next(i for i in final["idiomas"] if i["codigo"] == "de")
+    por_num = {a["numero"]: a["titulo"] for a in de["anexos"]}
+    assert por_num[1] == "Die 10 Gewohnheiten"
+    assert por_num[2] == "Das Energie-Geheimnis"
+    # o OUTRO idioma (pt-br) nao foi tocado
+    ptbr = next(i for i in final["idiomas"] if i["codigo"] == "pt-br")
+    assert all(a["titulo"] == "" for a in ptbr["anexos"])

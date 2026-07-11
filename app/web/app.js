@@ -348,6 +348,7 @@ function renderResumoGeral() {
     ${publicados ? `<span class="rg-sep">·</span><span class="rg-item rg-ok">${publicados} publicados ✓</span>` : ""}
     ${semCapa ? `<span class="rg-sep">·</span><span class="rg-item rg-alerta">${semCapa} sem capa</span>` : ""}
     ${comErro ? `<span class="rg-sep">·</span><span class="rg-item rg-erro">${comErro} com erro</span>` : ""}
+    ${faltaTexto ? `<button class="rg-completar" data-acao="completar-faltantes" title="Gera/traduz só os ${faltaTexto} que ficaram faltando (os que deram erro). Não mexe no que já está pronto.">🔁 Completar faltantes (${faltaTexto})</button>` : ""}
     <button class="rg-limpar" data-acao="limpar-tudo" title="Remove todos os produtos da fila (não apaga os PDFs/capas do disco)">🗑 Apagar todos</button>
     <span class="rg-barra" title="azul = traduzido · verde = revisado · verde forte = publicado">
       <i class="b-trad" style="width:${pct(comTextos - revisados)}%"></i>
@@ -357,6 +358,11 @@ function renderResumoGeral() {
 }
 
 $("resumo-geral").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-acao='completar-faltantes']")) {
+    // processarTudo() ja pega SO os idiomas vazios (os que deram erro) + descricao faltando
+    await processarTudo();
+    return;
+  }
   if (!e.target.closest("[data-acao='limpar-tudo']")) return;
   const total = estado.produtos.length;
   if (!confirm(`Apagar TODOS os ${total} produtos da fila?\n\nOs arquivos PDF/capas NÃO são apagados — só a fila daqui. Você pode reimportar a pasta depois.`)) return;
@@ -572,6 +578,19 @@ function limiteTraducoes() {
   return (n && n > 0) ? n : 15;
 }
 
+// Chama a API tentando de novo em falha (soluço do agy/token se recupera sozinho).
+async function apiComRetry(metodo, url, body, tentativas = 3) {
+  let ultimo;
+  for (let n = 0; n < tentativas; n++) {
+    try { return await api(metodo, url, body); }
+    catch (e) {
+      ultimo = e;
+      if (n < tentativas - 1) await new Promise((r) => setTimeout(r, 900 * (n + 1)));
+    }
+  }
+  throw ultimo;
+}
+
 async function traduzirLote(pid, itens) {
   const fila = [...itens];
   let erros = 0;
@@ -582,7 +601,7 @@ async function traduzirLote(pid, itens) {
     while (fila.length) {
       const item = fila.shift();
       try {
-        await api("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`);
+        await apiComRetry("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`);
       } catch (e) {
         erros++;
         toast(`${item.pais}: ${e.message}`, "erro");
@@ -651,7 +670,7 @@ async function processarTudo() {
     // 1) descricao PT primeiro (traducoes dependem dela)
     if (!p.descricao_pt) {
       try {
-        await sem.run(() => api("POST", `/api/produtos/${pid}/descricao`));
+        await sem.run(() => apiComRetry("POST", `/api/produtos/${pid}/descricao`));
       } catch (e) { erros++; toast(`${p.titulo_pt}: ${e.message}`, "erro"); }
       finally { estado.ocupados.delete(`${pid}:desc`); await recarregarProduto(pid); }
       p = estado.produtos.find((x) => x.id === pid);
@@ -665,7 +684,7 @@ async function processarTudo() {
     // 2) traduz os idiomas ainda vazios (cada um passa pelo semaforo global)
     const faltantes = p.idiomas.filter((i) => !i.titulo || !i.descricao);
     await Promise.all(faltantes.map((item) =>
-      sem.run(() => api("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`))
+      sem.run(() => apiComRetry("POST", `/api/produtos/${pid}/traduzir/${item.codigo}`))
         .catch((e) => { erros++; toast(`${item.pais}: ${e.message}`, "erro"); })
         .finally(async () => {
           estado.ocupados.delete(`${pid}:${item.codigo}`);
@@ -1005,7 +1024,8 @@ $("btn-aplicar-titulos").addEventListener("click", async () => {
       toast("Nenhum título aplicado — confira o formato da lista e a pasta escolhida.", "erro");
     } else {
       const aviso = r.sem_match.length ? ` · ${r.sem_match.length} produto(s) sem título na lista` : "";
-      toast(`${r.aplicados.length} título(s) aplicado(s) ✓${aviso}`, "ok");
+      const bonus = r.bonus_nomeados ? ` · ${r.bonus_nomeados} bônus nomeado(s)` : "";
+      toast(`${r.aplicados.length} título(s) aplicado(s) ✓${aviso}${bonus}`, "ok");
     }
   } catch (e) {
     toast(e.message, "erro");

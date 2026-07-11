@@ -54,8 +54,9 @@ REGRAS CRITICAS:
 2. PRESERVE a estrutura da descricao: paragrafos, quebras de linha e bullets ("- ") nos mesmos lugares.
 3. NAO traduza nomes proprios de pessoas ou marcas.
 4. NAO adicione nem omita informacao.
-5. RESPOSTA: APENAS um objeto JSON valido com EXATAMENTE as chaves "titulo" e "descricao". Sem texto fora do JSON, sem comentarios, sem cercas de codigo. Comece com {{ e termine com }}.
+5. RESPOSTA: APENAS um objeto JSON valido com as chaves "titulo" e "descricao" (e "extras" se ela existir no INPUT). Sem texto fora do JSON, sem comentarios, sem cercas de codigo. Comece com {{ e termine com }}.
 6. Escape corretamente aspas duplas (\\") e quebras de linha (\\n) dentro dos strings JSON.
+7. Se o INPUT tiver a chave "extras" (lista de titulos de bonus), traduza CADA item e devolva "extras" como lista com a MESMA quantidade e na MESMA ordem.
 
 INPUT (traduza este JSON):
 {json_entrada}"""
@@ -108,24 +109,31 @@ def gerar_descricao(provider: str, api_key: str, model: str, *, titulo: str, tip
 
 
 def traduzir_textos(provider: str, api_key: str, model: str, titulo: str, descricao: str,
-                    codigo_idioma: str) -> dict:
-    """Traduz titulo+descricao pra um idioma em 1 chamada. Retorna {titulo, descricao}."""
+                    codigo_idioma: str, extras: list[str] | None = None) -> dict:
+    """Traduz titulo+descricao (e opcionalmente uma lista de titulos de bonus)
+    pra um idioma em 1 chamada. Retorna {titulo, descricao, extras}.
+
+    `extras` = titulos de bonus em PT. O retorno "extras" vem na MESMA ordem;
+    se o LLM devolver menos itens, os que faltarem caem pro texto original em PT
+    (melhor um bonus em PT do que travar a traducao inteira)."""
     if not (descricao or "").strip():
         raise TextosError("Descricao vazia — gere ou escreva a descricao em PT antes de traduzir.")
     if not (titulo or "").strip():
         raise TextosError("Titulo vazio — preencha o titulo antes de traduzir.")
 
+    extras = [e.strip() for e in (extras or []) if (e or "").strip()]
+
     if codigo_idioma == "pt-br":
-        return {"titulo": titulo.strip(), "descricao": descricao.strip()}
+        return {"titulo": titulo.strip(), "descricao": descricao.strip(), "extras": list(extras)}
 
     info = idiomas.por_codigo(codigo_idioma)
     if info is None:
         raise TextosError(f"Idioma desconhecido: '{codigo_idioma}'")
 
-    json_entrada = json.dumps(
-        {"titulo": titulo.strip(), "descricao": descricao.strip()},
-        ensure_ascii=False, indent=2,
-    )
+    entrada = {"titulo": titulo.strip(), "descricao": descricao.strip()}
+    if extras:
+        entrada["extras"] = extras
+    json_entrada = json.dumps(entrada, ensure_ascii=False, indent=2)
     prompt = PROMPT_TRADUCAO.format(nome_idioma=info["nome_idioma"], json_entrada=json_entrada)
 
     try:
@@ -140,4 +148,14 @@ def traduzir_textos(provider: str, api_key: str, model: str, titulo: str, descri
         raise TextosError(
             f"Traducao incompleta pra '{info['pais']}' — chaves recebidas: {list(dados.keys())}"
         )
-    return {"titulo": titulo_tr, "descricao": descricao_tr}
+
+    # extras: alinha por indice; o que faltar/vazio cai pro PT original
+    extras_tr: list[str] = []
+    recebidos = dados.get("extras") or []
+    if not isinstance(recebidos, list):
+        recebidos = []
+    for n, pt in enumerate(extras):
+        tr = str(recebidos[n]).strip() if n < len(recebidos) and recebidos[n] else ""
+        extras_tr.append(tr or pt)
+
+    return {"titulo": titulo_tr, "descricao": descricao_tr, "extras": extras_tr}

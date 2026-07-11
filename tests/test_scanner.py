@@ -288,6 +288,22 @@ def test_bonus_vira_anexo_do_principal(tmp_path):
     assert bonus1["capa"].endswith("BONUS 1.jpeg")
 
 
+def test_anexo_bonus_marcado_com_papel_e_numero(tmp_path):
+    criar(
+        tmp_path,
+        "PRINCIPAL REDE 1 - Italia.pdf",
+        "BONUS 1 REDE 1 - Italia.pdf",
+        "BONUS 2 - REDE 1 - Italia.pdf",
+    )
+    r = scanner.analisar_pasta(tmp_path)
+    anexos = r["grupos"][0]["idiomas"][0]["anexos"]
+    por_num = {a["numero"]: a for a in anexos}
+    assert por_num[1]["papel"] == "bonus"
+    assert por_num[2]["papel"] == "bonus"
+    # campos de titulo comecam vazios (preenchidos no aplicar/traduzir)
+    assert por_num[1]["titulo_pt"] == "" and por_num[1]["titulo"] == ""
+
+
 def test_extra_vai_pro_opsell_certo(tmp_path):
     criar(
         tmp_path,

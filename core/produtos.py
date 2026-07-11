@@ -185,3 +185,52 @@ def atualizar_item(produto_id: str, codigo_idioma: str, patch: dict) -> dict:
                 _salvar(registro)
                 return item
     raise ProdutoError(f"Idioma '{codigo_idioma}' nao existe no produto {produto_id}")
+
+
+def definir_titulo_pt_anexos(produto_id: str, bonus: dict, extras: dict) -> int:
+    """Grava o titulo PT nos anexos (bonus/extra) de TODOS os idiomas, casando
+    pelo (papel, numero). `bonus`/`extras` = {numero: titulo}. Retorna quantos
+    anexos foram nomeados. Chaves numericas toleram int ou str."""
+    def _busca(mapa: dict, numero):
+        if numero is None:
+            return None
+        return mapa.get(numero) or mapa.get(str(numero))
+
+    with _TRAVA:
+        registro = _obter_sem_trava(produto_id)
+        n = 0
+        for item in registro["idiomas"]:
+            for anexo in item.get("anexos", []):
+                papel = anexo.get("papel")
+                if papel == "bonus":
+                    novo = _busca(bonus, anexo.get("numero"))
+                elif papel == "extra":
+                    novo = _busca(extras, anexo.get("numero"))
+                else:
+                    novo = None
+                if novo:
+                    anexo["titulo_pt"] = novo
+                    n += 1
+        _salvar(registro)
+        return n
+
+
+def definir_titulo_traduzido_anexos(produto_id: str, codigo_idioma: str,
+                                    traducao_por_pt: dict) -> int:
+    """Grava o titulo traduzido nos anexos de UM idioma, casando pelo titulo_pt.
+    `traducao_por_pt` = {titulo_pt: titulo_traduzido}. Retorna quantos anexos
+    receberam traducao."""
+    with _TRAVA:
+        registro = _obter_sem_trava(produto_id)
+        n = 0
+        for item in registro["idiomas"]:
+            if item["codigo"] != codigo_idioma:
+                continue
+            for anexo in item.get("anexos", []):
+                pt = (anexo.get("titulo_pt") or "").strip()
+                if pt and pt in traducao_por_pt:
+                    anexo["titulo"] = traducao_por_pt[pt]
+                    n += 1
+            _salvar(registro)
+            return n
+    return 0

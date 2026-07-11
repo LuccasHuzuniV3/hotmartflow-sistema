@@ -46,6 +46,74 @@ def produto_revisado():
 
 
 # ---------------------------------------------------------------------------
+# Renomear conteudo pro titulo traduzido (cliente nao ve o nome interno do PDF)
+# ---------------------------------------------------------------------------
+def test_nome_arquivo_seguro_remove_caracteres_invalidos():
+    assert robo._nome_arquivo_seguro('O Segredo: Amor/Vida * Poder?') == "O Segredo Amor Vida Poder"
+
+
+def test_nome_arquivo_seguro_preserva_acentos():
+    assert robo._nome_arquivo_seguro("Das große Geheimnis") == "Das große Geheimnis"
+
+
+def test_nome_arquivo_seguro_vazio_vira_ebook():
+    assert robo._nome_arquivo_seguro("   ...   ") == "ebook"
+    assert robo._nome_arquivo_seguro("") == "ebook"
+
+
+def test_preparar_uploads_nomeia_principal_e_bonus_com_titulo_proprio(tmp_path):
+    principal = tmp_path / "PRINCIPAL REDE 2 - Alemao.pdf"
+    bonus1 = tmp_path / "BONUS 1 REDE 2 - Alemao.pdf"
+    bonus2 = tmp_path / "BONUS 2 REDE 2 - Alemao.pdf"
+    for f in (principal, bonus1, bonus2):
+        f.write_bytes(b"%PDF-1.4 conteudo")
+    destino = tmp_path / "temp_upload"
+    destino.mkdir()
+
+    # cada bonus tem SEU proprio titulo traduzido (nao numera o principal)
+    itens = [
+        (str(principal), "Das große Geheimnis"),
+        (str(bonus1), "Die 10 spirituellen Gewohnheiten"),
+        (str(bonus2), "Das Geheimnis der spirituellen Energie"),
+    ]
+    copias = robo.Tela._preparar_uploads(None, itens, str(destino))
+
+    nomes = [os.path.basename(c) for c in copias]
+    assert nomes == ["Das große Geheimnis.pdf",
+                     "Die 10 spirituellen Gewohnheiten.pdf",
+                     "Das Geheimnis der spirituellen Energie.pdf"]
+    assert all(os.path.isfile(c) for c in copias)
+    assert principal.read_bytes() == b"%PDF-1.4 conteudo"  # original intacto
+
+
+def test_preparar_uploads_numera_nomes_repetidos(tmp_path):
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    a.write_bytes(b"x")
+    b.write_bytes(b"y")
+    destino = tmp_path / "t"
+    destino.mkdir()
+    # dois arquivos caindo no mesmo titulo (ex.: bonus sem titulo -> principal)
+    copias = robo.Tela._preparar_uploads(
+        None, [(str(a), "Mesmo Título"), (str(b), "Mesmo Título")], str(destino))
+    nomes = [os.path.basename(c) for c in copias]
+    assert nomes == ["Mesmo Título.pdf", "Mesmo Título 2.pdf"]
+
+
+def test_preparar_uploads_preserva_extensao_e_nome_vazio(tmp_path):
+    origem = tmp_path / "algo - Alemao.epub"
+    origem.write_bytes(b"epub")
+    destino = tmp_path / "t"
+    destino.mkdir()
+    # com titulo
+    c1 = robo.Tela._preparar_uploads(None, [(str(origem), "Meu Título")], str(destino))
+    assert os.path.basename(c1[0]) == "Meu Título.epub"
+    # sem titulo -> mantem o nome original do arquivo
+    c2 = robo.Tela._preparar_uploads(None, [(str(origem), "")], str(destino))
+    assert os.path.basename(c2[0]) == "algo - Alemao.epub"
+
+
+# ---------------------------------------------------------------------------
 # Fluxo simulado completo
 # ---------------------------------------------------------------------------
 def test_simulado_fluxo_completo():

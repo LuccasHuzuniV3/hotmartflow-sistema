@@ -285,6 +285,7 @@ def titulos_aplicar(body: TitulosIn):
     mapa = titulos.parse_titulos(body.texto)
     pasta_norm = str(Path(body.pasta))
     aplicados, sem_match = [], []
+    bonus_ok = 0
 
     for p in produtos.listar():
         if str(Path(p["pasta"])) != pasta_norm:
@@ -306,8 +307,12 @@ def titulos_aplicar(body: TitulosIn):
         else:
             sem_match.append(f"{p['tipo']}{f' {numero}' if numero else ''} — {p['titulo_pt'][:40]}")
 
+        # titulos dos anexos (bonus no Principal, extra no Upsell) — casados por numero
+        if mapa["bonus"] or mapa["extras"]:
+            bonus_ok += produtos.definir_titulo_pt_anexos(p["id"], mapa["bonus"], mapa["extras"])
+
     return {"aplicados": aplicados, "sem_match": sem_match,
-            "ignoradas": len(mapa["ignoradas"])}
+            "bonus_nomeados": bonus_ok, "ignoradas": len(mapa["ignoradas"])}
 
 
 # ---------------------------------------------------------------------------
@@ -445,9 +450,19 @@ def traduzir(produto_id: str, codigo: str):
     except produtos.ProdutoError as e:
         _erro(str(e), 404)
     provider, api_key, model = _llm_cfg()
+    # titulos de bonus (unicos, ordem estavel) — traduzidos na MESMA chamada
+    bonus_pt: list[str] = []
+    vistos = set()
+    for it in reg["idiomas"]:
+        for a in it.get("anexos", []):
+            t = (a.get("titulo_pt") or "").strip()
+            if t and t not in vistos:
+                vistos.add(t)
+                bonus_pt.append(t)
     try:
         traduzido = textos.traduzir_textos(
             provider, api_key, model, reg["titulo_pt"], reg["descricao_pt"], codigo,
+            extras=bonus_pt,
         )
     except textos.TextosError as e:
         _erro(str(e))
@@ -459,6 +474,13 @@ def traduzir(produto_id: str, codigo: str):
     if item_atual["status"] == "rascunho":
         patch["status"] = "textos_gerados"
     try:
-        return produtos.atualizar_item(produto_id, codigo, patch)
+        item = produtos.atualizar_item(produto_id, codigo, patch)
     except produtos.ProdutoError as e:
         _erro(str(e))
+    # grava os titulos de bonus traduzidos nos anexos deste idioma
+    if bonus_pt:
+        traducao_por_pt = dict(zip(bonus_pt, traduzido.get("extras", [])))
+        produtos.definir_titulo_traduzido_anexos(produto_id, codigo, traducao_por_pt)
+        item = produtos.obter(produto_id)  # devolve ja com os anexos atualizados
+        item = next((i for i in item["idiomas"] if i["codigo"] == codigo), item)
+    return item

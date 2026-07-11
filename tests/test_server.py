@@ -323,6 +323,48 @@ def test_aplicar_titulos_nao_afeta_outra_pasta(cliente, pasta_rede, pasta_ebooks
     assert all(p["titulo_pt"] == "Meu Ebook" for p in outros)
 
 
+def test_bonus_recebe_titulo_pt_no_aplicar_e_traduzido_no_traduzir(cliente, tmp_path, monkeypatch):
+    # rede com Principal + 2 bonus (anexos do Principal), 2 idiomas
+    pasta = tmp_path / "rede_bonus"
+    for sub, suf in (("BRASIL", "Brasil"), ("ITALIA", "Italia")):
+        (pasta / sub).mkdir(parents=True)
+        for nome in ("PRINCIPAL REDE 9.pdf", "BONUS 1 REDE 9.pdf", "BONUS 2 REDE 9.pdf"):
+            (pasta / sub / nome).write_bytes(b"x")
+    importar(cliente, pasta)
+    pid = next(p for p in cliente.get("/api/produtos").json() if p["tipo"] == "Principal")["id"]
+
+    # aplicar títulos: os BONUS ganham titulo_pt casado por numero
+    texto = ("EBOOK PRINCIPAL ; O GRANDE SEGREDO\n"
+             "BONUS 1 ; OS 10 HABITOS\n"
+             "BONUS 2 ; O SEGREDO DA ENERGIA\n")
+    r = cliente.post("/api/titulos/aplicar", json={"texto": texto, "pasta": str(pasta)})
+    assert r.json()["bonus_nomeados"] == 4  # 2 bonus x 2 idiomas
+    reg = cliente.get(f"/api/produtos/{pid}").json()
+    it_it = next(i for i in reg["idiomas"] if i["codigo"] == "it")
+    por_num = {a["numero"]: a["titulo_pt"] for a in it_it["anexos"]}
+    assert por_num[1] == "OS 10 HABITOS" and por_num[2] == "O SEGREDO DA ENERGIA"
+
+    # traduzir (it): o mock recebe os extras e devolve traduzido; anexos ganham titulo
+    cliente.patch(f"/api/produtos/{pid}", json={"descricao_pt": "Desc PT"})
+    capturado = {}
+
+    def fake_traduzir(provider, api_key, model, titulo, descricao, codigo, extras=None):
+        capturado["extras"] = extras
+        return {"titulo": "T-IT", "descricao": "D-IT",
+                "extras": [f"{e} IT" for e in (extras or [])]}
+
+    monkeypatch.setattr(textos, "traduzir_textos", fake_traduzir)
+    cliente.post(f"/api/produtos/{pid}/traduzir/it")
+
+    # os titulos PT dos bonus foram enviados pra traducao (1 chamada so)
+    assert set(capturado["extras"]) == {"OS 10 HABITOS", "O SEGREDO DA ENERGIA"}
+    reg2 = cliente.get(f"/api/produtos/{pid}").json()
+    it2 = next(i for i in reg2["idiomas"] if i["codigo"] == "it")
+    por_num2 = {a["numero"]: a["titulo"] for a in it2["anexos"]}
+    assert por_num2[1] == "OS 10 HABITOS IT"
+    assert por_num2[2] == "O SEGREDO DA ENERGIA IT"
+
+
 # ---------------------------------------------------------------------------
 # Capas
 # ---------------------------------------------------------------------------

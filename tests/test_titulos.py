@@ -26,11 +26,14 @@ def test_parse_formato_real_do_discord():
     assert r["upsells"][2] == "AS 7 PROTEÇÕES DO UNIVERSO CONTRA A INVEJA NO SIGNO DE GÊMEOS!"
 
 
-def test_bonus_e_linhas_estranhas_sao_ignoradas_sem_erro():
+def test_bonus_sao_capturados_com_titulo():
     r = titulos.parse_titulos(TEXTO_REAL)
-    # 4 linhas de BONUS + 1 header "rede 4..." — nada disso vira titulo de produto
-    assert len(r["ignoradas"]) >= 5
-    assert not any("BONUS" in (r["principal"] or "") for _ in [0])
+    # BONUS agora vira titulo de anexo (casado por numero)
+    assert r["bonus"][1].startswith("OS 9 HÁBITOS")  # ultimo BONUS 1 vence
+    assert r["bonus"][2].startswith("O SEGREDO DO UNIVERSO POR TRÁS DA ENERGIA")
+    # o header "rede 4..." continua sendo ignorado (nao vira titulo)
+    assert any("rede 4" in ig["linha"].lower() for ig in r["ignoradas"])
+    assert "BONUS" not in (r["principal"] or "")
 
 
 def test_variacoes_de_rotulo():
