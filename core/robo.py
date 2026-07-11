@@ -88,6 +88,10 @@ class Job:
         self.etapa = ""
         self.mensagens: list[dict] = []
         self.iniciado_em = datetime.now().isoformat(timespec="seconds")
+        # cronometro por etapa (pra medir onde o tempo vai) — fechado a cada marca
+        self.tempos: list[dict] = []
+        self._t_ini_etapa: float | None = None
+        self._etapa_cron: str = ""
         self._codigo_2fa: str | None = None
         self._evento_codigo = threading.Event()
         self._evento_confirmacao = threading.Event()
@@ -161,8 +165,30 @@ class Job:
 
     def marcar_etapa(self, etapa: str, texto: str) -> None:
         self._checar_cancelamento()
+        self._fechar_etapa()   # cronometra a etapa que acabou
         self.etapa = etapa
+        self._etapa_cron = etapa
+        self._t_ini_etapa = time.monotonic()
         self.log(texto)
+
+    def _fechar_etapa(self) -> None:
+        """Fecha o cronometro da etapa atual e guarda a duracao."""
+        if self._t_ini_etapa is not None and self._etapa_cron:
+            dur = time.monotonic() - self._t_ini_etapa
+            self.tempos.append({"etapa": self._etapa_cron, "segundos": round(dur, 1)})
+        self._t_ini_etapa = None
+        self._etapa_cron = ""
+
+    def resumo_tempos(self) -> str:
+        """Fecha a ultima etapa e devolve um resumo (etapas mais lentas no topo)."""
+        self._fechar_etapa()
+        if not self.tempos:
+            return ""
+        total = sum(t["segundos"] for t in self.tempos)
+        linhas = [f"⏱ Tempo por etapa (total {total / 60:.1f} min):"]
+        for t in sorted(self.tempos, key=lambda x: x["segundos"], reverse=True):
+            linhas.append(f"   {t['segundos']:6.1f}s  {t['etapa']}")
+        return "\n".join(linhas)
 
 
 # ---------------------------------------------------------------------------
@@ -234,10 +260,14 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
             job.log("Publicado com sucesso ✔", "ok")
             try:  # grava no historico (rede = nome da pasta de origem)
                 rede = Path(produto.get("pasta", "")).name or produto.get("pasta", "")
+                # tipo especifico: "Upsell 1", "Order Bump 2"... (Principal nao tem numero)
+                tipo = produto["tipo"]
+                if produto.get("numero"):
+                    tipo = f"{tipo} {produto['numero']}"
                 historico.registrar(
                     rede=rede, pais=item["pais"],
                     titulo=item["titulo"] or produto["titulo_pt"],
-                    tipo=produto["tipo"], hotmart_id=job.hotmart_id)
+                    tipo=tipo, hotmart_id=job.hotmart_id)
             except Exception:
                 pass  # historico nunca derruba a publicacao
         else:
@@ -944,6 +974,15 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             if not tela.existe_texto("Enviado para aprovação", timeout=15000):
                 job.log("Não vi a mensagem 'Enviado para aprovação' — confira o print final.", "aviso")
             tela.shot("finalizado")
+
+            # ---- medição: onde o tempo foi gasto (aparece no painel e em arquivo) ----
+            resumo = job.resumo_tempos()
+            if resumo:
+                job.log(resumo, "ok")
+                try:
+                    (pasta_shots / "tempos.txt").write_text(resumo, encoding="utf-8")
+                except OSError:
+                    pass
         finally:
             # NAO fecha a janela — ela fica aberta e logada pra proxima publicacao.
             # O Chrome foi aberto por nos (subprocess), fora do Playwright; ao sair

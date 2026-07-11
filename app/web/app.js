@@ -73,6 +73,15 @@ document.querySelectorAll(".aba").forEach((btn) => {
 // Histórico de publicações
 // ---------------------------------------------------------------------------
 const ORDEM_TIPO_HIST = { "Principal": 0, "Order Bump": 1, "Upsell": 2 };
+// o tipo agora pode vir com numero ("Upsell 1"); separa base e numero pra ordenar
+function ordemTipoHist(tipo) {
+  const base = String(tipo || "").replace(/\s*\d+\s*$/, "").trim();
+  return ORDEM_TIPO_HIST[base] ?? 9;
+}
+function numeroTipoHist(tipo) {
+  const m = String(tipo || "").match(/(\d+)\s*$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
 
 async function carregarHistorico() {
   let r;
@@ -89,7 +98,8 @@ async function carregarHistorico() {
     const nomesPaises = Object.keys(paises).sort();
     const corpo = nomesPaises.map((pais) => {
       const itens = [...paises[pais]].sort((a, b) =>
-        (ORDEM_TIPO_HIST[a.tipo] ?? 9) - (ORDEM_TIPO_HIST[b.tipo] ?? 9)
+        (ordemTipoHist(a.tipo) - ordemTipoHist(b.tipo))
+        || (numeroTipoHist(a.tipo) - numeroTipoHist(b.tipo))
         || String(a.titulo).localeCompare(b.titulo));
       const linhas = itens.map((it) => `
         <div class="hist-item">

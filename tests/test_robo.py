@@ -114,6 +114,36 @@ def test_preparar_uploads_preserva_extensao_e_nome_vazio(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Cronometro por etapa (medicao de onde o tempo vai)
+# ---------------------------------------------------------------------------
+def test_job_cronometra_cada_etapa(monkeypatch):
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(robo.time, "monotonic", lambda: relogio["t"])
+    job = robo.Job({"id": "p", "titulo_pt": "X"},
+                   {"titulo": "T", "descricao": "D", "codigo": "de", "pais": "Alemao"}, "real")
+
+    relogio["t"] = 100.0
+    job.marcar_etapa("upload", "subindo...")
+    relogio["t"] = 130.0                       # upload durou 30s
+    job.marcar_etapa("preco", "preco...")
+    relogio["t"] = 135.0                       # preco durou 5s
+    resumo = job.resumo_tempos()
+
+    por_etapa = {t["etapa"]: t["segundos"] for t in job.tempos}
+    assert por_etapa["upload"] == 30.0
+    assert por_etapa["preco"] == 5.0
+    # a etapa mais lenta (upload) aparece no topo do resumo
+    assert resumo.index("upload") < resumo.index("preco")
+    assert "total 0.6 min" in resumo   # 35s = 0.58 -> 0.6
+
+
+def test_resumo_tempos_vazio_sem_etapas():
+    job = robo.Job({"id": "p", "titulo_pt": "X"},
+                   {"titulo": "T", "descricao": "D", "codigo": "de", "pais": "Alemao"}, "real")
+    assert job.resumo_tempos() == ""
+
+
+# ---------------------------------------------------------------------------
 # Fluxo simulado completo
 # ---------------------------------------------------------------------------
 def test_simulado_fluxo_completo():
