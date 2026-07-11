@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import agy, config, dialogo, idiomas, produtos, robo, scanner, textos, titulos, updater
+from core import agy, config, dialogo, historico, idiomas, produtos, robo, scanner, textos, titulos, updater
 
 PASTA_WEB = Path(__file__).resolve().parent / "web"
 
@@ -139,6 +139,19 @@ def idiomas_listar():
 
 
 # ---------------------------------------------------------------------------
+# Histórico de publicações
+# ---------------------------------------------------------------------------
+@app.get("/api/historico")
+def historico_listar():
+    return {"arvore": historico.agrupado(), "total": len(historico.listar())}
+
+
+@app.delete("/api/historico")
+def historico_limpar():
+    return {"ok": True, "removidos": historico.remover_tudo()}
+
+
+# ---------------------------------------------------------------------------
 # Auto-atualizacao (baixa a versao nova do GitHub)
 # ---------------------------------------------------------------------------
 @app.get("/api/versao")
@@ -187,7 +200,7 @@ def _registrar_recente(pasta: str) -> None:
 @app.post("/api/scan")
 def scan(body: ScanIn):
     try:
-        resultado = scanner.analisar_pasta(body.pasta)
+        resultado = scanner.analisar_auto(body.pasta)
     except scanner.ScannerError as e:
         _erro(str(e))
     pasta_norm = str(Path(body.pasta))
@@ -206,7 +219,7 @@ def scan(body: ScanIn):
 def produtos_importar(body: ImportarIn):
     s = config.carregar_settings()
     try:
-        resultado = scanner.analisar_pasta(body.pasta)
+        resultado = scanner.analisar_auto(body.pasta)
     except scanner.ScannerError as e:
         _erro(str(e))
     selecionados = resultado["grupos"]

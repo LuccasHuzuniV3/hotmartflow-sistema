@@ -361,6 +361,88 @@ def test_order_bump_nao_recebe_anexo(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# analisar_rede — pasta da REDE com subpastas por PAIS (país = nome da pasta)
+# ---------------------------------------------------------------------------
+def montar_rede(tmp_path):
+    """Cria a estrutura REDE/PAIS/arquivos (país = pasta, sem sufixo no nome)."""
+    def pais(nome, arquivos):
+        p = tmp_path / nome
+        p.mkdir()
+        for a in arquivos:
+            (p / a).write_bytes(b"x")
+
+    pais("ALEMANHA", [
+        "PRINCIPAL REDE 2 SIGNO ESCORPIAO - LUCAS.pdf", "PRINCIPAL.jpeg",
+        "ORDER BUMP 1 REDE 2 SIGNO ESCORPIAO.pdf", "ORDER BUMP 1.jpeg",
+        "BONUS 1 REDE 2 SIGNO ESCORPIAO.pdf", "BONUS 1.jpeg",
+        "OPSELL 1 REDE 2 SIGNO ESCORPIAO.pdf", "OPSELL 1.jpeg",
+        "EXTRA 1 OP 1 REDE 2 SIGNO ESCORPIAO.pdf", "EXTRA 1 OP 1.jpeg",
+    ])
+    pais("BRASIL", [
+        "PRINCIPAL REDE 2 SIGNO ESCORPIAO - LUCAS.pdf",
+        "ORDER BUMP 1 REDE 2 SIGNO ESCORPIAO.pdf",
+    ])
+    (tmp_path / "ZPAG CHECKOUT").mkdir()
+    (tmp_path / "ZPAG CHECKOUT" / "qualquer.pdf").write_bytes(b"x")
+    return tmp_path
+
+
+def test_rede_le_paises_das_subpastas(tmp_path):
+    montar_rede(tmp_path)
+    r = scanner.analisar_rede(tmp_path)
+    # PRINCIPAL existe em ALEMANHA e BRASIL -> 1 produto, 2 idiomas
+    principal = next(g for g in r["grupos"] if g["tipo"] == "Principal")
+    codigos = {i["codigo"] for i in principal["idiomas"]}
+    assert codigos == {"de", "pt-br"}  # ALEMANHA->de, BRASIL->pt-br
+
+
+def test_rede_ignora_zpag_checkout(tmp_path):
+    montar_rede(tmp_path)
+    r = scanner.analisar_rede(tmp_path)
+    assert "ZPAG CHECKOUT" not in [pp["pasta"] for pp in r.get("paises", [])]
+    # nenhum produto veio da pasta ZPAG CHECKOUT
+    from pathlib import Path as _P
+    assert all(_P(i["pdf"]).parent.name.upper() != "ZPAG CHECKOUT"
+               for g in r["grupos"] for i in g["idiomas"])
+
+
+def test_rede_tipos_e_anexos_dentro_da_pasta(tmp_path):
+    montar_rede(tmp_path)
+    r = scanner.analisar_rede(tmp_path)
+    tipos = {g["tipo"] for g in r["grupos"]}
+    assert tipos == {"Principal", "Order Bump", "Upsell"}
+    # o BONUS de ALEMANHA vira anexo do Principal (idioma de)
+    principal = next(g for g in r["grupos"] if g["tipo"] == "Principal")
+    item_de = next(i for i in principal["idiomas"] if i["codigo"] == "de")
+    assert any("BONUS 1" in a["nome"] for a in item_de["anexos"])
+    # o EXTRA de ALEMANHA vira anexo do OPSELL
+    ops = next(g for g in r["grupos"] if g["tipo"] == "Upsell")
+    item_ops = next(i for i in ops["idiomas"] if i["codigo"] == "de")
+    assert any("EXTRA 1 OP 1" in a["nome"] for a in item_ops["anexos"])
+
+
+def test_rede_capa_por_prefixo_dentro_da_pasta(tmp_path):
+    montar_rede(tmp_path)
+    r = scanner.analisar_rede(tmp_path)
+    principal = next(g for g in r["grupos"] if g["tipo"] == "Principal")
+    item_de = next(i for i in principal["idiomas"] if i["codigo"] == "de")
+    assert item_de["capa"] and item_de["capa"].endswith("PRINCIPAL.jpeg")
+
+
+def test_rede_pais_desconhecido_vai_pra_avisos(tmp_path):
+    (tmp_path / "ATLANTIDA").mkdir()
+    (tmp_path / "ATLANTIDA" / "PRINCIPAL X.pdf").write_bytes(b"x")
+    r = scanner.analisar_rede(tmp_path)
+    assert any("Atlantida" in ig["motivo"] or "ATLANTIDA" in ig["arquivo"]
+               for ig in r["ignorados"])
+
+
+def test_rede_pasta_inexistente_levanta_erro():
+    with pytest.raises(scanner.ScannerError):
+        scanner.analisar_rede(r"C:\nao\existe")
+
+
+# ---------------------------------------------------------------------------
 # Erros
 # ---------------------------------------------------------------------------
 def test_pasta_inexistente_levanta_erro():

@@ -65,7 +65,53 @@ document.querySelectorAll(".aba").forEach((btn) => {
     btn.classList.add("ativa");
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("visivel"));
     $(`tab-${btn.dataset.aba}`).classList.add("visivel");
+    if (btn.dataset.aba === "historico") carregarHistorico();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Histórico de publicações
+// ---------------------------------------------------------------------------
+const ORDEM_TIPO_HIST = { "Principal": 0, "Order Bump": 1, "Upsell": 2 };
+
+async function carregarHistorico() {
+  let r;
+  try { r = await api("GET", "/api/historico"); } catch (e) { toast(e.message, "erro"); return; }
+  $("hist-resumo").textContent = r.total
+    ? `${r.total} publicação(ões) registradas`
+    : "Nada publicado ainda — o histórico é preenchido quando você publica de verdade.";
+  const box = $("hist-arvore");
+  const redes = Object.keys(r.arvore).sort();
+  if (!redes.length) { box.innerHTML = ""; return; }
+  box.innerHTML = redes.map((rede) => {
+    const paises = r.arvore[rede];
+    const totalRede = Object.values(paises).reduce((a, arr) => a + arr.length, 0);
+    const nomesPaises = Object.keys(paises).sort();
+    const corpo = nomesPaises.map((pais) => {
+      const itens = [...paises[pais]].sort((a, b) =>
+        (ORDEM_TIPO_HIST[a.tipo] ?? 9) - (ORDEM_TIPO_HIST[b.tipo] ?? 9)
+        || String(a.titulo).localeCompare(b.titulo));
+      const linhas = itens.map((it) => `
+        <div class="hist-item">
+          <span class="chip tipo">${esc(it.tipo)}</span>
+          <span class="h-tit">${esc(it.titulo)}</span>
+          ${it.hotmart_id ? `<span class="h-id"><a href="https://app.hotmart.com/products/manage/${esc(it.hotmart_id)}" target="_blank">#${esc(it.hotmart_id)}</a></span>` : ""}
+          <span class="h-quando">${esc((it.quando || "").replace("T", " "))}</span>
+        </div>`).join("");
+      return `<div class="hist-pais"><div class="pais-nome">${esc(pais)} <small>(${itens.length})</small></div>${linhas}</div>`;
+    }).join("");
+    return `<div class="hist-rede"><h3>${esc(rede)} <small>${totalRede} publicação(ões)</small></h3>${corpo}</div>`;
+  }).join("");
+}
+
+$("btn-hist-atualizar").addEventListener("click", carregarHistorico);
+$("btn-hist-limpar").addEventListener("click", async () => {
+  if (!confirm("Limpar TODO o histórico de publicações?\n(Isso não desfaz nada na Hotmart — só apaga o registro aqui.)")) return;
+  try {
+    const r = await api("DELETE", "/api/historico");
+    toast(`${r.removidos} registro(s) apagados.`, "ok");
+    carregarHistorico();
+  } catch (e) { toast(e.message, "erro"); }
 });
 
 // ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from pathlib import Path
 
 from core import produtos
 from core import gmail_code
+from core import historico
 from core import hotmart_map as hm
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -80,6 +81,7 @@ class Job:
         self.codigo_idioma = item["codigo"]
         self.pais = item["pais"]
         self.modo = modo
+        self.hotmart_id = ""  # ID do produto na Hotmart (capturado da URL)
         self.estado = "iniciando"
         self.etapa = ""
         self.mensagens: list[dict] = []
@@ -228,6 +230,14 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
         if job.modo == "real":
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "publicado"})
             job.log("Publicado com sucesso ✔", "ok")
+            try:  # grava no historico (rede = nome da pasta de origem)
+                rede = Path(produto.get("pasta", "")).name or produto.get("pasta", "")
+                historico.registrar(
+                    rede=rede, pais=item["pais"],
+                    titulo=item["titulo"] or produto["titulo_pt"],
+                    tipo=produto["tipo"], hotmart_id=job.hotmart_id)
+            except Exception:
+                pass  # historico nunca derruba a publicacao
         else:
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "revisado"})
             job.log(f"Modo {job.modo} concluído — nada foi enviado de verdade.", "ok")
@@ -803,6 +813,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 page.wait_for_timeout(3500)
             except RoboError:
                 job.log("Sem 'Ir para o painel' — seguindo (talvez já no painel).", "aviso")
+            # captura o ID do produto na Hotmart (da URL /products/manage/NNNN)
+            import re as _re
+            m_id = _re.search(r"/products/manage/(\d+)", page.url)
+            if m_id:
+                job.hotmart_id = m_id.group(1)
+                job.log(f"Produto na Hotmart: ID {job.hotmart_id}")
 
             # ---- 5. conteudo do produto: menu lateral -> upload dos PDFs ------
             anexos_pdf = [a["pdf"] for a in item.get("anexos", [])

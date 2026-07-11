@@ -2,8 +2,17 @@
 from core import idiomas
 
 
-def test_lista_tem_20_idiomas():
-    assert len(idiomas.IDIOMAS) == 20
+def test_lista_tem_22_idiomas():
+    assert len(idiomas.IDIOMAS) == 22  # + Russia (ru) e Coreia do Sul (ko)
+
+
+def test_alias_alemanha_vira_de():
+    assert idiomas.por_pais("ALEMANHA")["codigo"] == "de"
+
+
+def test_coreia_e_russia():
+    assert idiomas.por_pais("Coreia do Sul")["codigo"] == "ko"
+    assert idiomas.por_pais("Russia")["codigo"] == "ru"
 
 
 def test_por_pais_match_exato():

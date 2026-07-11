@@ -113,10 +113,18 @@ def analisar_pasta(pasta: str | Path, tipos: list[str] | None = None) -> dict:
             "codigo": info_idioma["codigo"], "pais": info_idioma["pais"],
         })
 
-    # ---- fase 2: cria os produtos ------------------------------------------
+    lista_grupos = _montar_grupos(registros, ignorados)
+    return {"grupos": lista_grupos, "ignorados": ignorados}
+
+
+def _montar_grupos(registros: list[dict], ignorados: list[dict]) -> list[dict]:
+    """Fases 2 e 3 (compartilhadas por analisar_pasta e analisar_rede): cria os
+    produtos agrupando por (titulo, tipo), vincula os anexos (bonus/extra) ao
+    dono do MESMO idioma, casa capas e ordena. A capa e buscada na PASTA DO
+    PROPRIO ARQUIVO (arq.parent) — funciona pra pasta unica ou por-pais."""
     grupos: dict[tuple[str, str], dict] = {}
-    principais: dict[str, list[dict]] = {}          # codigo idioma -> [itens]
-    opsells: dict[tuple[int, str], dict] = {}        # (num, codigo) -> item
+    principais: dict[str, list[dict]] = {}
+    opsells: dict[tuple[int, str], dict] = {}
 
     for reg in registros:
         if reg["papel"] != "produto":
@@ -132,7 +140,7 @@ def analisar_pasta(pasta: str | Path, tipos: list[str] | None = None) -> dict:
             "codigo": reg["codigo"],
             "pais": reg["pais"],
             "pdf": str(reg["arquivo"]),
-            "capa": achar_capa(pasta, reg["arquivo"].stem),
+            "capa": achar_capa(reg["arquivo"].parent, reg["arquivo"].stem),
             "anexos": [],
         }
         grupos[chave]["idiomas"].append(item)
@@ -141,7 +149,6 @@ def analisar_pasta(pasta: str | Path, tipos: list[str] | None = None) -> dict:
         if tipo == "Upsell" and num_opsell is not None:
             opsells[(num_opsell, reg["codigo"])] = item
 
-    # ---- fase 3: vincula anexos (mesmo pais) --------------------------------
     for reg in registros:
         if reg["papel"] != "anexo":
             continue
@@ -149,7 +156,7 @@ def analisar_pasta(pasta: str | Path, tipos: list[str] | None = None) -> dict:
         anexo = {
             "nome": reg["titulo"],
             "pdf": str(reg["arquivo"]),
-            "capa": achar_capa(pasta, reg["arquivo"].stem),
+            "capa": achar_capa(reg["arquivo"].parent, reg["arquivo"].stem),
         }
         if destino == "principal":
             candidatos = principais.get(reg["codigo"], [])
@@ -178,8 +185,75 @@ def analisar_pasta(pasta: str | Path, tipos: list[str] | None = None) -> dict:
         g["idiomas"].sort(key=lambda i: idiomas.ordem(i["codigo"]))
         for item in g["idiomas"]:
             item["anexos"].sort(key=lambda a: a["nome"].lower())
+    return lista_grupos
 
-    return {"grupos": lista_grupos, "ignorados": ignorados}
+
+# Subpastas da rede que NUNCA sao paises (ignoradas no analisar_rede)
+IGNORAR_PASTAS = ("zpag checkout",)
+
+
+def analisar_auto(pasta: str | Path, tipos: list[str] | None = None) -> dict:
+    """Detecta sozinho o formato e chama o scanner certo:
+      - Tem PDF direto na pasta -> pasta única ('Título - Tipo - País.pdf').
+      - Não tem PDF mas tem subpastas de país (ALEMANHA/, BRASIL/...) -> REDE.
+    """
+    pasta = Path(pasta)
+    if not pasta.is_dir():
+        raise ScannerError(f"Pasta nao encontrada: {pasta}")
+    tem_pdf = any(a.is_file() and a.suffix.lower() == ".pdf" for a in pasta.iterdir())
+    if tem_pdf:
+        return analisar_pasta(pasta, tipos=tipos)
+    tem_pais = any(
+        s.is_dir() and idiomas.normalizar(s.name) not in IGNORAR_PASTAS
+        and idiomas.por_pais(s.name) is not None
+        for s in pasta.iterdir()
+    )
+    if tem_pais:
+        return analisar_rede(pasta, tipos=tipos)
+    return analisar_pasta(pasta, tipos=tipos)  # fallback (dará "nada encontrado")
+
+
+def analisar_rede(pasta_rede: str | Path, tipos: list[str] | None = None) -> dict:
+    """Varre uma pasta de REDE com SUBPASTAS por país (ALEMANHA/, BRASIL/, ...).
+
+    O país vem do NOME DA PASTA (não do nome do arquivo). Dentro de cada pasta,
+    os PDFs seguem o padrão de sempre (PRINCIPAL..., ORDER BUMP n..., OPSELL n...,
+    BONUS n..., EXTRA x OP y...) e as capas são JPEGs com o começo do nome.
+    A pasta 'ZPAG CHECKOUT' é ignorada.
+
+    Retorna: {"grupos", "ignorados", "paises": [{"pasta","codigo"}]}.
+    """
+    pasta_rede = Path(pasta_rede)
+    if not pasta_rede.is_dir():
+        raise ScannerError(f"Pasta nao encontrada: {pasta_rede}")
+
+    ignorados: list[dict] = []
+    registros: list[dict] = []
+    paises: list[dict] = []
+
+    for sub in sorted(pasta_rede.iterdir()):
+        if not sub.is_dir():
+            continue
+        if idiomas.normalizar(sub.name) in IGNORAR_PASTAS:
+            continue  # ex.: ZPAG CHECKOUT
+        info = idiomas.por_pais(sub.name)
+        if info is None:
+            ignorados.append({"arquivo": sub.name,
+                              "motivo": f"Pasta de país desconhecido: '{sub.name}'"})
+            continue
+        paises.append({"pasta": sub.name, "codigo": info["codigo"]})
+        for arq in sorted(sub.iterdir()):
+            if not arq.is_file() or arq.suffix.lower() != ".pdf":
+                continue
+            titulo = arq.stem.strip()  # o nome inteiro e o titulo (pais = a pasta)
+            papel, dado = _classificar(titulo, None)
+            registros.append({
+                "arquivo": arq, "titulo": titulo, "papel": papel, "dado": dado,
+                "codigo": info["codigo"], "pais": info["pais"],
+            })
+
+    lista_grupos = _montar_grupos(registros, ignorados)
+    return {"grupos": lista_grupos, "ignorados": ignorados, "paises": paises}
 
 
 def achar_capa(pasta: Path, stem: str) -> str | None:

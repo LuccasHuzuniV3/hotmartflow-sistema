@@ -29,9 +29,23 @@ IDIOMAS = [
     {"codigo": "sr",    "pais": "Servia",     "nome_idioma": "servio (alfabeto latino)"},
     {"codigo": "el",    "pais": "Grecia",     "nome_idioma": "grego"},
     {"codigo": "fil",   "pais": "Filipinas",  "nome_idioma": "filipino (tagalog)"},
+    {"codigo": "ru",    "pais": "Russia",       "nome_idioma": "russo"},
+    {"codigo": "ko",    "pais": "Coreia do Sul", "nome_idioma": "coreano"},
 ]
 
 _ORDEM = {info["codigo"]: n for n, info in enumerate(IDIOMAS)}
+
+# Apelidos: nomes de pasta que diferem do nome canonico acima.
+# (ex.: a pasta chama "ALEMANHA", mas internamente o pais e "Alemao").
+_ALIASES = {
+    "alemanha": "de",
+    "estados unidos": "en",
+    "eua": "en",
+    "russia": "ru",
+    "russo": "ru",
+    "coreia": "ko",
+    "coreia do sul": "ko",
+}
 
 
 def normalizar(texto: str) -> str:
@@ -46,6 +60,9 @@ def por_pais(nome: str) -> Optional[dict]:
     for info in IDIOMAS:
         if normalizar(info["pais"]) == alvo:
             return info
+    cod = _ALIASES.get(alvo)  # tenta apelido (ex.: "alemanha" -> de)
+    if cod:
+        return por_codigo(cod)
     return None
 
 

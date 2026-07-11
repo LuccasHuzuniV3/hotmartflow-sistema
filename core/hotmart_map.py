@@ -32,6 +32,8 @@ IDIOMA_HOTMART = {
     "fr": "Français",
     "de": "Deutsch",
     "it": "Italiano",
+    "ru": "Русский",
+    "ko": "한국어",
 }
 IDIOMA_FALLBACK = "English"  # idiomas que a Hotmart nao tem -> ingles
 
@@ -62,6 +64,8 @@ PAIS_HOTMART = {
     "sr": "Sérvia",
     "el": "Grécia",
     "fil": "Filipinas",
+    "ru": "Rússia",
+    "ko": "Coreia do Sul",
 }
 
 MAPA = {

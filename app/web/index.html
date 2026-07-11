@@ -14,6 +14,7 @@
     </div>
     <nav class="abas">
       <button class="aba ativa" data-aba="produtos">Produtos</button>
+      <button class="aba" data-aba="historico">Histórico</button>
       <button class="aba" data-aba="config">Config</button>
     </nav>
     <div class="status-key" id="status-key" title="Status da API key">
@@ -25,7 +26,7 @@
     <!-- ============ ABA PRODUTOS ============ -->
     <section id="tab-produtos" class="tab visivel">
       <div class="scan-bar card">
-        <label class="scan-label">Pasta com os ebooks — <code>Título&nbsp;-&nbsp;País.pdf</code> (tipo opcional: <code>Título&nbsp;-&nbsp;Order&nbsp;Bump&nbsp;-&nbsp;País.pdf</code>)</label>
+        <label class="scan-label">Pasta com os ebooks — arquivos <code>Título&nbsp;-&nbsp;País.pdf</code> <b>OU</b> pasta da rede com subpastas por país (<code>ALEMANHA/</code>, <code>BRASIL/</code>...). Detecta sozinho. <code>ZPAG&nbsp;CHECKOUT</code> é ignorada.</label>
         <div class="scan-linha">
           <input id="scan-pasta" type="text" placeholder="C:\HOTMART\rede\FILIPINAS" spellcheck="false">
           <button id="btn-escolher-pasta" class="btn" title="Escolher a pasta pelo Windows">📁 Escolher…</button>
@@ -96,6 +97,16 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; ...
           <small>Escaneie uma pasta acima pra importar os ebooks.</small>
         </div>
       </div>
+    </section>
+
+    <!-- ============ ABA HISTÓRICO ============ -->
+    <section id="tab-historico" class="tab">
+      <div class="hist-topo">
+        <span id="hist-resumo" class="hist-resumo">—</span>
+        <button id="btn-hist-atualizar" class="btn mini">Atualizar</button>
+        <button id="btn-hist-limpar" class="btn mini perigo">Limpar histórico</button>
+      </div>
+      <div id="hist-arvore" class="hist-arvore"></div>
     </section>
 
     <!-- ============ ABA CONFIG ============ -->

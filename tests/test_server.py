@@ -80,7 +80,7 @@ def test_settings_roundtrip(cliente):
 
 def test_idiomas(cliente):
     r = cliente.get("/api/idiomas")
-    assert len(r.json()) == 20
+    assert len(r.json()) == 22
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +145,23 @@ def test_scan_detecta_grupos_e_capa(cliente, pasta_ebooks):
 def test_scan_pasta_invalida_da_400(cliente):
     r = cliente.post("/api/scan", json={"pasta": r"C:\nao\existe"})
     assert r.status_code == 400
+
+
+def test_scan_auto_detecta_rede_por_subpastas(cliente, tmp_path):
+    # pasta REDE com subpastas de país (sem PDF direto) -> analisar_rede
+    rede = tmp_path / "REDE X"
+    (rede / "ALEMANHA").mkdir(parents=True)
+    (rede / "ALEMANHA" / "PRINCIPAL REDE X.pdf").write_bytes(b"x")
+    (rede / "BRASIL").mkdir()
+    (rede / "BRASIL" / "PRINCIPAL REDE X.pdf").write_bytes(b"x")
+    (rede / "ZPAG CHECKOUT").mkdir()
+    (rede / "ZPAG CHECKOUT" / "x.pdf").write_bytes(b"x")
+    r = cliente.post("/api/scan", json={"pasta": str(rede)})
+    assert r.status_code == 200
+    grupos = r.json()["grupos"]
+    principal = next(g for g in grupos if g["tipo"] == "Principal")
+    codigos = {i["codigo"] for i in principal["idiomas"]}
+    assert codigos == {"de", "pt-br"}  # ALEMANHA + BRASIL, ZPAG ignorado
 
 
 def test_importar_cria_produtos_com_preco_da_tabela(cliente, pasta_ebooks):

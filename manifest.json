@@ -1,5 +1,5 @@
 {
-  "version": 31,
+  "version": 32,
   "files": [
     "README.md",
     "app/__init__.py",
@@ -13,6 +13,7 @@
     "core/config.py",
     "core/dialogo.py",
     "core/gmail_code.py",
+    "core/historico.py",
     "core/hotmart_map.py",
     "core/idiomas.py",
     "core/llm.py",
