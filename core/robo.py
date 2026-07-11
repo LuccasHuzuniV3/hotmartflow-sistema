@@ -422,10 +422,16 @@ class Tela:
             campo.type(valor, delay=self.delay_digitacao, timeout=tmo)  # fallback API antiga
         self.page.wait_for_timeout(250)
 
-    def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
+    def escolher_opcao(self, chave_campo: str, texto_opcao: str, tmo_rapido: int = 250,
+                       rounds_fallback: int = 2, tmo_fallback: int = 700,
+                       opcional: bool = False) -> bool:
         """Dropdown de busca (hot-select / selectize): abre, tenta clicar direto na
         opção (rápido, p/ opções já visíveis como a 1ª); se não achar, DIGITA pra
-        filtrar e tenta de novo. A opção fica 'hidden' com o dropdown fechado."""
+        filtrar e tenta de novo. A opção fica 'hidden' com o dropdown fechado.
+
+        Orçamento de tempo ajustável (pra não gastar 25s num campo best-effort):
+        tmo_rapido/rounds_fallback/tmo_fallback. Se `opcional=True`, ao não achar
+        NÃO levanta erro — só loga e retorna False (mantém o padrão da tela)."""
         import re
         campo = self._localizar(chave_campo)
         campo.click()               # abre o dropdown
@@ -455,8 +461,8 @@ class Tela:
             return False
 
         # 1) tentativa RÁPIDA sem digitar (pega opções já visíveis, ex.: a 1ª = Sócio)
-        if tentar(exatas, 250):
-            return
+        if tentar(exatas, tmo_rapido):
+            return True
 
         # 2) digita pra filtrar (rápido — dropdown nao sofre anti-bot) e tenta de novo
         delay_filtro = min(self.delay_digitacao, 8)
@@ -472,10 +478,14 @@ class Tela:
         def com_fallback(ctx):
             return exatas(ctx) + [ctx.locator(sel).first]  # 1a opcao da lista filtrada
 
-        for _ in range(2):
-            if tentar(com_fallback, 700):
-                return
+        for _ in range(rounds_fallback):
+            if tentar(com_fallback, tmo_fallback):
+                return True
             self.page.wait_for_timeout(300)
+        if opcional:  # best-effort: nao trava o fluxo, so mantem o padrao
+            self.job.log(f"Opção '{texto_opcao}' não encontrada em '{chave_campo}' — "
+                         "mantendo o padrão da tela.", "aviso")
+            return False
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
             f"Não consegui selecionar '{texto_opcao}' no campo {chave_campo}. "
@@ -653,16 +663,38 @@ class Tela:
             copias.append(alvo)
         return copias
 
+    def _elemento_visivel(self, chave: str, timeout: int = 1500) -> bool:
+        """True se ALGUM candidato da chave está visível agora (rápido, sem
+        screenshot de erro). Usado pra saber, p.ex., se o botão 'Finalizar' ainda
+        está na tela ou já sumiu (= cadastro finalizado)."""
+        for c in hm.MAPA[chave]:
+            for ctx in self._contextos():
+                try:
+                    self._loc_no_ctx(ctx, c).first.wait_for(state="visible", timeout=timeout)
+                    return True
+                except Exception:
+                    continue
+        return False
+
     def finalizar_cadastro(self, tentativas: int = 3) -> bool:
-        """Clica em 'Finalizar Cadastro' e SÓ retorna True quando a Hotmart
-        confirma ('Enviado para aprovação'). Tenta algumas vezes, escalando o
-        tipo de clique — o botão às vezes não dispara de primeira ou fica atrás
-        do widget de chat (que intercepta o clique):
-          1ª) clique normal · 2ª) clique forçado · 3ª) dispatch do evento (passa
-          por cima de qualquer overlay)."""
+        """Clica em 'Finalizar Cadastro' e reconhece o sucesso por DOIS sinais:
+          a) a mensagem 'Enviado para aprovação' aparece, OU
+          b) o botão 'Finalizar' SUMIU depois do clique (= a Hotmart finalizou —
+             o botão só existe enquanto o produto é rascunho).
+        O sinal (b) é o confiável: a mensagem às vezes é um toast que some rápido
+        ou vem noutro idioma. Escala o clique a cada tentativa (o botão às vezes
+        não dispara de 1ª ou fica atrás do balão de chat): normal → forçado →
+        dispatch. SÓ considera 'sumiu = sucesso' se a gente REALMENTE clicou."""
+        clicou = False
         for n in range(1, tentativas + 1):
+            if not self._elemento_visivel("btn_finalizar_cadastro", timeout=2000):
+                if clicou:  # sumiu DEPOIS do nosso clique -> finalizou
+                    self.job.log("Botão 'Finalizar' sumiu após o clique — finalizado ✔", "ok")
+                    return True
+                self.page.wait_for_timeout(1500)   # ainda carregando o painel
+                continue
             try:
-                btn = self._localizar("btn_finalizar_cadastro", timeout=15000)
+                btn = self._localizar("btn_finalizar_cadastro", timeout=8000)
                 try:
                     btn.scroll_into_view_if_needed(timeout=3000)
                 except Exception:
@@ -673,11 +705,18 @@ class Tela:
                     btn.click(force=True)          # ignora checagem de "recebe o clique"
                 else:
                     btn.dispatch_event("click")     # dispara direto no elemento (fura overlay)
+                clicou = True
             except Exception:
                 self.job.log(f"Finalizar: tentativa {n} não conseguiu clicar no botão.", "aviso")
                 self.page.wait_for_timeout(1500)
                 continue
-            if self.existe_texto("Enviado para aprovação", timeout=12000):
+            self.page.wait_for_timeout(1500)   # deixa o clique processar
+            # sucesso b) PRIMEIRO (sinal confiável e rápido): o botão sumiu = finalizou
+            if not self._elemento_visivel("btn_finalizar_cadastro", timeout=2500):
+                self.job.log("Botão 'Finalizar' sumiu após o clique — finalizado ✔", "ok")
+                return True
+            # sucesso a): a mensagem de confirmação (fallback)
+            if self.existe_texto("Enviado para aprovação", timeout=4000):
                 return True
             self.job.log(f"Finalizar: tentativa {n} sem confirmação da Hotmart — repetindo.", "aviso")
             self.page.wait_for_timeout(1500)
@@ -914,11 +953,10 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
             tela.escolher_opcao("campo_moeda", moeda_txt)
             job.lap("preco: select moeda")
-            # prazo de reembolso (config; a Hotmart ja costuma vir 7 dias) — best-effort
-            try:
-                tela.escolher_opcao("campo_reembolso", f"{int(s['hotmart']['reembolso_dias'])} dias")
-            except RoboError:
-                job.log("Prazo de reembolso: mantido o padrão da Hotmart.", "aviso")
+            # prazo de reembolso (config; a Hotmart ja costuma vir 7 dias) — best-effort.
+            # orcamento CURTO: se nao achar rapido, mantem o padrao (evita gastar 25s).
+            tela.escolher_opcao("campo_reembolso", f"{int(s['hotmart']['reembolso_dias'])} dias",
+                                tmo_rapido=150, rounds_fallback=1, tmo_fallback=300, opcional=True)
             job.lap("preco: select reembolso")
             # forma de pagamento: sempre à vista
             tela.escolher_opcao("campo_forma_pagamento", "Pagamento à vista")
@@ -1003,10 +1041,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     # "P,00" digitamos os digitos de P*100 (ex.: 10 -> "1000" -> "10,00").
                     digitos_pct = str(int(round(float(coprod["percentual"]) * 100)))
                     tela.preencher("campo_percentual", digitos_pct)
+                    job.lap("coprod: digitar percentual")
                     # modelo de coproducao: "parceria de negocio"
                     tela.clicar_por_texto("Modelo de parceria de negócio")
+                    job.lap("coprod: click 'Modelo parceria'")
                     tela.clicar("check_termos")
-                    job.lap("coprod: percentual + modelo + termos")
+                    job.lap("coprod: click termos")
                     tela.shot("coproducao_preenchida")
                     tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
                     job.lap("coprod: enviar (Continuar)")

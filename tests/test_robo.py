@@ -131,40 +131,56 @@ class _BtnFake:
 
 
 class _TelaFake:
-    """Stub mínimo pra exercitar Tela.finalizar_cadastro sem navegador."""
-    def __init__(self, confirma_na_tentativa):
-        self._confirma = confirma_na_tentativa
-        self._checagens = 0
+    """Stub mínimo pra exercitar Tela.finalizar_cadastro sem navegador.
+
+    confirma_texto_na: em qual clique o existe_texto passa a retornar True (None = nunca).
+    botao_some_apos: após quantos cliques o botão fica invisível (None = nunca some).
+    """
+    def __init__(self, confirma_texto_na=None, botao_some_apos=None):
+        self.confirma_texto_na = confirma_texto_na
+        self.botao_some_apos = botao_some_apos
         self.cliques: list[str] = []
         import types
         self.page = types.SimpleNamespace(wait_for_timeout=lambda ms: None)
         self.job = types.SimpleNamespace(log=lambda *a, **k: None)
 
+    def _elemento_visivel(self, chave, timeout=0):
+        if self.botao_some_apos is None:
+            return True
+        return len(self.cliques) < self.botao_some_apos
+
     def _localizar(self, chave, timeout=0):
         return _BtnFake(self.cliques)
 
     def existe_texto(self, texto, timeout=0):
-        self._checagens += 1
-        return self._checagens >= self._confirma
+        return self.confirma_texto_na is not None and len(self.cliques) >= self.confirma_texto_na
 
 
-def test_finalizar_confirma_na_primeira_clica_normal():
-    fake = _TelaFake(confirma_na_tentativa=1)
+def test_finalizar_confirma_por_mensagem_na_primeira():
+    fake = _TelaFake(confirma_texto_na=1)  # msg 'Enviado para aprovação' aparece
     assert robo.Tela.finalizar_cadastro(fake) is True
     assert fake.cliques == ["click"]  # nao precisou escalar
 
 
-def test_finalizar_escala_clique_ate_confirmar():
-    fake = _TelaFake(confirma_na_tentativa=3)  # confirma so na 3a rodada
+def test_finalizar_confirma_por_botao_sumir():
+    # a msg NUNCA aparece, mas o botao some depois do 2o clique = finalizou
+    fake = _TelaFake(confirma_texto_na=None, botao_some_apos=2)
     assert robo.Tela.finalizar_cadastro(fake) is True
-    # normal -> forcado -> dispatch (fura overlay do chat)
-    assert fake.cliques == ["click", "click_force", "dispatch:click"]
+    assert fake.cliques == ["click", "click_force"]  # sucesso reconhecido no 2o
 
 
-def test_finalizar_sem_confirmacao_retorna_false():
-    fake = _TelaFake(confirma_na_tentativa=99)  # Hotmart nunca confirma
+def test_finalizar_falha_de_verdade_retorna_false():
+    # msg nunca aparece E botao nunca some -> falhou mesmo
+    fake = _TelaFake(confirma_texto_na=None, botao_some_apos=None)
     assert robo.Tela.finalizar_cadastro(fake) is False
-    assert len(fake.cliques) == 3  # tentou as 3 vezes antes de desistir
+    assert len(fake.cliques) == 3  # tentou as 3 vezes
+
+
+def test_finalizar_nao_declara_sucesso_sem_clicar():
+    # botao ausente desde o inicio (sem nunca clicar) -> NAO pode dizer sucesso
+    fake = _TelaFake(confirma_texto_na=None, botao_some_apos=0)
+    assert robo.Tela.finalizar_cadastro(fake) is False
+    assert fake.cliques == []  # nunca clicou, entao nao inventa sucesso
 
 
 # ---------------------------------------------------------------------------
