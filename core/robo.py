@@ -92,6 +92,9 @@ class Job:
         self.tempos: list[dict] = []
         self._t_ini_etapa: float | None = None
         self._etapa_cron: str = ""
+        # cronometro FINO por sub-passo (lap) — pra achar a gordura dentro da etapa
+        self.subtempos: list[dict] = []
+        self._t_lap: float | None = None
         self._codigo_2fa: str | None = None
         self._evento_codigo = threading.Event()
         self._evento_confirmacao = threading.Event()
@@ -169,7 +172,18 @@ class Job:
         self.etapa = etapa
         self._etapa_cron = etapa
         self._t_ini_etapa = time.monotonic()
+        self._t_lap = time.monotonic()   # reinicia o cronometro fino na etapa nova
         self.log(texto)
+
+    def lap(self, nome: str) -> None:
+        """Marca o tempo de um SUB-PASSO (desde o ultimo lap/inicio da etapa).
+        So instrumentacao — nao muda o fluxo. Cai no resumo e no tempos.txt."""
+        agora = time.monotonic()
+        if self._t_lap is not None:
+            dur = round(agora - self._t_lap, 1)
+            self.subtempos.append({"nome": nome, "segundos": dur})
+            self.log(f"  ⏲ {nome}: {dur:.1f}s")
+        self._t_lap = agora
 
     def _fechar_etapa(self) -> None:
         """Fecha o cronometro da etapa atual e guarda a duracao."""
@@ -188,6 +202,10 @@ class Job:
         linhas = [f"⏱ Tempo por etapa (total {total / 60:.1f} min):"]
         for t in sorted(self.tempos, key=lambda x: x["segundos"], reverse=True):
             linhas.append(f"   {t['segundos']:6.1f}s  {t['etapa']}")
+        if self.subtempos:
+            linhas.append("— detalhe dos sub-passos (ordem do fluxo) —")
+            for s in self.subtempos:
+                linhas.append(f"   {s['segundos']:6.1f}s  {s['nome']}")
         return "\n".join(linhas)
 
 
@@ -895,17 +913,21 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 moeda_txt, sigla = "Dólar Americano", "USD"
             job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
             tela.escolher_opcao("campo_moeda", moeda_txt)
+            job.lap("preco: select moeda")
             # prazo de reembolso (config; a Hotmart ja costuma vir 7 dias) — best-effort
             try:
                 tela.escolher_opcao("campo_reembolso", f"{int(s['hotmart']['reembolso_dias'])} dias")
             except RoboError:
                 job.log("Prazo de reembolso: mantido o padrão da Hotmart.", "aviso")
+            job.lap("preco: select reembolso")
             # forma de pagamento: sempre à vista
             tela.escolher_opcao("campo_forma_pagamento", "Pagamento à vista")
+            job.lap("preco: select forma pagamento")
             valor = f"{item['preco']:.2f}".replace(".", ",")
             tela.preencher("campo_valor", valor)
             tela.shot("preco")
             tela.clicar("btn_salvar_continuar")
+            job.lap("preco: digitar valor + salvar")
             page.wait_for_timeout(2500)   # salva o preco + troca pra area de membros
 
             # ---- 4b. area de membros: Club com espaco (<300) + Criar produto ----
@@ -967,13 +989,16 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 # a lista de coproducoes carrega async — espera o botao aparecer (ate 20s)
                 if not tela.existe_texto("Convidar", timeout=20000):
                     job.log("A tela de Coproduções demorou a carregar — tentando mesmo assim...", "aviso")
+                job.lap("coprod: abrir tela + carregar lista")
                 if tela.existe_texto(coprod["email"]) and tela.existe_texto("Pendente"):
                     job.log("Já existe convite Pendente pra esse coprodutor — pulando (evita duplicar).", "aviso")
                 else:
                     tela.clicar("btn_convidar_coprodutor", timeout=15000)
                     page.wait_for_timeout(1000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
+                    job.lap("coprod: abrir form + email")
                     tela.escolher_opcao("campo_atuacao", "Sócio do produto")
+                    job.lap("coprod: select 'Sócio do produto'")
                     # o campo de % preenche da direita p/ esquerda (money): pra mostrar
                     # "P,00" digitamos os digitos de P*100 (ex.: 10 -> "1000" -> "10,00").
                     digitos_pct = str(int(round(float(coprod["percentual"]) * 100)))
@@ -981,18 +1006,23 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     # modelo de coproducao: "parceria de negocio"
                     tela.clicar_por_texto("Modelo de parceria de negócio")
                     tela.clicar("check_termos")
+                    job.lap("coprod: percentual + modelo + termos")
                     tela.shot("coproducao_preenchida")
                     tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
+                    job.lap("coprod: enviar (Continuar)")
                     page.wait_for_timeout(2500)   # troca pra tela de revisao do convite
                     # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
                     job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
                     inicio_2fa = time.time()
                     tela.clicar_por_texto("Li e concordo com as informações")
                     tela.shot("coproducao_revisao")
+                    job.lap("revisao: concordar")
                     codigo = _obter_codigo_2fa(job, s, desde_ts=inicio_2fa)
+                    job.lap("revisao: ESPERAR o e-mail do 2FA")
                     tela.preencher("campo_codigo_2fa", codigo)
                     tela.shot("codigo_preenchido")
                     tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
+                    job.lap("revisao: enviar convite com código")
                     page.wait_for_timeout(3000)   # submete o convite com o 2FA
                     tela.shot("coproducao_enviada")
                     if tela.existe_texto("erro", timeout=2000):

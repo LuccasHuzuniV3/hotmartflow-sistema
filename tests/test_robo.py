@@ -197,6 +197,28 @@ def test_resumo_tempos_vazio_sem_etapas():
     assert job.resumo_tempos() == ""
 
 
+def test_lap_mede_subpassos_e_entra_no_resumo(monkeypatch):
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(robo.time, "monotonic", lambda: relogio["t"])
+    job = robo.Job({"id": "p", "titulo_pt": "X"},
+                   {"titulo": "T", "descricao": "D", "codigo": "de", "pais": "Alemao"}, "real")
+
+    relogio["t"] = 10.0
+    job.marcar_etapa("coproducao", "...")   # reinicia o lap em t=10
+    relogio["t"] = 13.0
+    job.lap("select socio")                 # 3s
+    relogio["t"] = 25.0
+    job.lap("esperar 2fa")                  # 12s
+    resumo = job.resumo_tempos()
+
+    subs = {s["nome"]: s["segundos"] for s in job.subtempos}
+    assert subs["select socio"] == 3.0
+    assert subs["esperar 2fa"] == 12.0
+    # os sub-passos aparecem no resumo, na ordem do fluxo
+    assert "detalhe dos sub-passos" in resumo
+    assert resumo.index("select socio") < resumo.index("esperar 2fa")
+
+
 # ---------------------------------------------------------------------------
 # Fluxo simulado completo
 # ---------------------------------------------------------------------------
