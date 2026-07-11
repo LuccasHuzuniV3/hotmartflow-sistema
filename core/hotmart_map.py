@@ -22,28 +22,23 @@ URL_CRIAR_EBOOK = f"{URL_APP}/products/add/4/info"
 MARCADORES_LOGIN = ("sso.hotmart.com", "/login", "signin")
 
 # Nome do idioma como aparece no select "Idioma do produto" da Hotmart (UI em PT)
+# Nome do idioma EXATAMENTE como aparece no dropdown "Idioma do produto" da
+# Hotmart (nome na propria lingua). Só existem estes no dropdown; qualquer
+# idioma fora daqui cai em "English" (ver IDIOMA_FALLBACK / idioma_hotmart()).
 IDIOMA_HOTMART = {
-    "pt-br": "Português",
-    "en": "Inglês",
-    "es": "Espanhol",
-    "fr": "Francês",
-    "de": "Alemão",
+    "pt-br": "Português (Brasil)",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
     "it": "Italiano",
-    "nl": "Holandês",
-    "sv": "Sueco",
-    "fi": "Finlandês",
-    "pl": "Polonês",
-    "cs": "Tcheco",
-    "sk": "Eslovaco",
-    "sl": "Esloveno",
-    "hu": "Húngaro",
-    "ro": "Romeno",
-    "bg": "Búlgaro",
-    "hr": "Croata",
-    "sr": "Sérvio",
-    "el": "Grego",
-    "fil": "Filipino",
 }
+IDIOMA_FALLBACK = "English"  # idiomas que a Hotmart nao tem -> ingles
+
+
+def idioma_hotmart(codigo: str) -> str:
+    """Nome do idioma no dropdown da Hotmart; 'English' se nao existir lá."""
+    return IDIOMA_HOTMART.get(codigo, IDIOMA_FALLBACK)
 
 # Nome do pais como aparece em "Principal pais para vendas"
 PAIS_HOTMART = {

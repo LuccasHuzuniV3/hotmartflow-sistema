@@ -732,7 +732,10 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             page.wait_for_timeout(1500)
             tela.preencher("campo_nome", item["titulo"])
             tela.preencher("campo_descricao", item["descricao"])
-            tela.escolher_opcao("campo_idioma", hm.IDIOMA_HOTMART[item["codigo"]])
+            idioma_txt = hm.idioma_hotmart(item["codigo"])
+            if idioma_txt == hm.IDIOMA_FALLBACK and item["codigo"] not in hm.IDIOMA_HOTMART:
+                job.log(f"Idioma '{item['pais']}' não existe no dropdown da Hotmart — usando English.", "aviso")
+            tela.escolher_opcao("campo_idioma", idioma_txt)
             tela.escolher_opcao("campo_pais", hm.PAIS_HOTMART[item["codigo"]])
             # capa: o campo #cover aceita SO 1 imagem (a capa do produto).
             if item.get("capa") and Path(item["capa"]).is_file():
