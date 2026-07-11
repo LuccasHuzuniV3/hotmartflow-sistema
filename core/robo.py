@@ -422,16 +422,10 @@ class Tela:
             campo.type(valor, delay=self.delay_digitacao, timeout=tmo)  # fallback API antiga
         self.page.wait_for_timeout(250)
 
-    def escolher_opcao(self, chave_campo: str, texto_opcao: str, tmo_rapido: int = 250,
-                       rounds_fallback: int = 2, tmo_fallback: int = 700,
-                       opcional: bool = False) -> bool:
+    def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
         """Dropdown de busca (hot-select / selectize): abre, tenta clicar direto na
         opção (rápido, p/ opções já visíveis como a 1ª); se não achar, DIGITA pra
-        filtrar e tenta de novo. A opção fica 'hidden' com o dropdown fechado.
-
-        Orçamento de tempo ajustável (pra não gastar 25s num campo best-effort):
-        tmo_rapido/rounds_fallback/tmo_fallback. Se `opcional=True`, ao não achar
-        NÃO levanta erro — só loga e retorna False (mantém o padrão da tela)."""
+        filtrar e tenta de novo. A opção fica 'hidden' com o dropdown fechado."""
         import re
         campo = self._localizar(chave_campo)
         campo.click()               # abre o dropdown
@@ -461,8 +455,8 @@ class Tela:
             return False
 
         # 1) tentativa RÁPIDA sem digitar (pega opções já visíveis, ex.: a 1ª = Sócio)
-        if tentar(exatas, tmo_rapido):
-            return True
+        if tentar(exatas, 250):
+            return
 
         # 2) digita pra filtrar (rápido — dropdown nao sofre anti-bot) e tenta de novo
         delay_filtro = min(self.delay_digitacao, 8)
@@ -478,14 +472,10 @@ class Tela:
         def com_fallback(ctx):
             return exatas(ctx) + [ctx.locator(sel).first]  # 1a opcao da lista filtrada
 
-        for _ in range(rounds_fallback):
-            if tentar(com_fallback, tmo_fallback):
-                return True
+        for _ in range(2):
+            if tentar(com_fallback, 700):
+                return
             self.page.wait_for_timeout(300)
-        if opcional:  # best-effort: nao trava o fluxo, so mantem o padrao
-            self.job.log(f"Opção '{texto_opcao}' não encontrada em '{chave_campo}' — "
-                         "mantendo o padrão da tela.", "aviso")
-            return False
         self.shot(f"erro_opcao_{texto_opcao}")
         raise RoboError(
             f"Não consegui selecionar '{texto_opcao}' no campo {chave_campo}. "
@@ -953,11 +943,8 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
             tela.escolher_opcao("campo_moeda", moeda_txt)
             job.lap("preco: select moeda")
-            # prazo de reembolso (config; a Hotmart ja costuma vir 7 dias) — best-effort.
-            # orcamento CURTO: se nao achar rapido, mantem o padrao (evita gastar 25s).
-            tela.escolher_opcao("campo_reembolso", f"{int(s['hotmart']['reembolso_dias'])} dias",
-                                tmo_rapido=150, rounds_fallback=1, tmo_fallback=300, opcional=True)
-            job.lap("preco: select reembolso")
+            # prazo de reembolso: a Hotmart JÁ VEM com o padrão selecionado — não
+            # mexemos (evita ~25s e o erro de 'campo não encontrado').
             # forma de pagamento: sempre à vista
             tela.escolher_opcao("campo_forma_pagamento", "Pagamento à vista")
             job.lap("preco: select forma pagamento")
