@@ -488,6 +488,12 @@ class Tela:
         Se houver varios com espaço, escolhe o de menor contagem (mais folga)."""
         import re
         labels = self.page.get_by_text(re.compile(r"\d+\s+produtos?", re.I))
+        # espera os Clubs renderizarem (a lista carrega async) — nao depende de
+        # um wait fixo antes de chamar; poll ate ~6s pelo 1o "N produtos".
+        try:
+            labels.first.wait_for(state="visible", timeout=6000)
+        except Exception:
+            pass
         total = labels.count()
         if total == 0:
             self.shot("erro_club")
@@ -874,7 +880,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
 
             # ---- 4b. area de membros: Club com espaco (<300) + Criar produto ----
             job.marcar_etapa("area_membros", "Área de Membros: escolhendo o Club com espaço...")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(1500)
             tela.selecionar_club_com_espaco(limite=300)
             tela.shot("club_escolhido")
             tela.clicar("btn_criar_produto_final")
