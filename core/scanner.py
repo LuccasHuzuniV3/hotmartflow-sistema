@@ -188,8 +188,10 @@ def _montar_grupos(registros: list[dict], ignorados: list[dict]) -> list[dict]:
     return lista_grupos
 
 
-# Subpastas da rede que NUNCA sao paises (ignoradas no analisar_rede)
-IGNORAR_PASTAS = ("zpag checkout",)
+def _pasta_ignorada(nome: str) -> bool:
+    """Subpastas que NUNCA sao paises: qualquer uma com 'checkout' no nome
+    (ZPAG CHECKOUT, PAG CHECKOUT, etc.)."""
+    return "checkout" in idiomas.normalizar(nome)
 
 
 def analisar_auto(pasta: str | Path, tipos: list[str] | None = None) -> dict:
@@ -204,7 +206,7 @@ def analisar_auto(pasta: str | Path, tipos: list[str] | None = None) -> dict:
     if tem_pdf:
         return analisar_pasta(pasta, tipos=tipos)
     tem_pais = any(
-        s.is_dir() and idiomas.normalizar(s.name) not in IGNORAR_PASTAS
+        s.is_dir() and not _pasta_ignorada(s.name)
         and idiomas.por_pais(s.name) is not None
         for s in pasta.iterdir()
     )
@@ -234,8 +236,8 @@ def analisar_rede(pasta_rede: str | Path, tipos: list[str] | None = None) -> dic
     for sub in sorted(pasta_rede.iterdir()):
         if not sub.is_dir():
             continue
-        if idiomas.normalizar(sub.name) in IGNORAR_PASTAS:
-            continue  # ex.: ZPAG CHECKOUT
+        if _pasta_ignorada(sub.name):
+            continue  # ex.: ZPAG CHECKOUT / PAG CHECKOUT
         info = idiomas.por_pais(sub.name)
         if info is None:
             ignorados.append({"arquivo": sub.name,
@@ -292,4 +294,48 @@ def achar_capa(pasta: Path, stem: str) -> str | None:
                 continue  # 'bonus 1' nao pode casar com 'bonus 10...'
             if melhor is None or len(prefixo) > melhor[0]:
                 melhor = (len(prefixo), str(img))
-    return melhor[1] if melhor else None
+    if melhor:
+        return melhor[1]
+
+    # 3) por ASSINATURA (tipo + numero) — tolera grafias diferentes entre a capa
+    #    e o PDF (ex.: capa "ORDEM BUMP 7" vs PDF "ORDER BUMP 7 REDE 2...").
+    ass_pdf = _assinatura(stem)
+    if ass_pdf:
+        for local in locais:
+            if not local.is_dir():
+                continue
+            for img in local.iterdir():
+                if not img.is_file() or img.suffix.lower() not in EXTENSOES_IMAGEM:
+                    continue
+                if _assinatura(img.stem) == ass_pdf:
+                    return str(img)
+    return None
+
+
+import re as _re_ass  # noqa: E402
+
+_RE_BUMP = _re_ass.compile(r"^(?:order|ordem)\s+bump\s*(\d+)")
+_RE_EXTRA_ASS = _re_ass.compile(r"^extra\s*(\d+).*?\bop\s*(\d+)")
+_RE_BONUS_ASS = _re_ass.compile(r"^b[oô]?nus\s*(\d+)")
+_RE_OPS_ASS = _re_ass.compile(r"^(?:opsell|upsell)\s*(\d+)")
+
+
+def _assinatura(nome: str):
+    """Assinatura (tipo, numero) do nome — pra casar capa <-> PDF mesmo com
+    grafias diferentes (ORDEM/ORDER, BONUS/BÔNUS...). None se nao reconhece."""
+    t = idiomas.normalizar(nome)
+    m = _RE_BUMP.match(t)
+    if m:
+        return ("bump", int(m.group(1)))
+    m = _RE_EXTRA_ASS.match(t)
+    if m:
+        return ("extra", int(m.group(1)), int(m.group(2)))
+    m = _RE_BONUS_ASS.match(t)
+    if m:
+        return ("bonus", int(m.group(1)))
+    m = _RE_OPS_ASS.match(t)
+    if m:
+        return ("opsell", int(m.group(1)))
+    if t.startswith("principal"):
+        return ("principal",)
+    return None

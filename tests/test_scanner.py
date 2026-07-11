@@ -442,6 +442,46 @@ def test_rede_pasta_inexistente_levanta_erro():
         scanner.analisar_rede(r"C:\nao\existe")
 
 
+def test_capa_casa_ordem_com_order_por_assinatura(tmp_path):
+    # a capa e "ORDEM BUMP 7" (PT), o PDF e "ORDER BUMP 7..." (EN) -> casa por tipo+numero
+    p = tmp_path / "GRECIA"
+    p.mkdir()
+    (p / "ORDER BUMP 7 REDE 2 SIGNO ESCORPIAO - LUCAS.pdf").write_bytes(b"x")
+    (p / "ORDEM BUMP 7.jpeg").write_bytes(b"img")
+    r = scanner.analisar_rede(tmp_path)
+    bump = next(g for g in r["grupos"] if g["tipo"] == "Order Bump")
+    assert bump["idiomas"][0]["capa"] and bump["idiomas"][0]["capa"].endswith("ORDEM BUMP 7.jpeg")
+
+
+def test_assinatura_nao_confunde_bump_7_com_bump_1(tmp_path):
+    p = tmp_path / "GRECIA"
+    p.mkdir()
+    (p / "ORDER BUMP 7 REDE X.pdf").write_bytes(b"x")
+    (p / "ORDEM BUMP 1.jpeg").write_bytes(b"img")  # numero diferente -> NAO casa
+    r = scanner.analisar_rede(tmp_path)
+    bump = next(g for g in r["grupos"] if g["tipo"] == "Order Bump")
+    assert bump["idiomas"][0]["capa"] is None
+
+
+def test_rede_ignora_pag_checkout_sem_z(tmp_path):
+    (tmp_path / "PAG CHECKOUT").mkdir()
+    (tmp_path / "PAG CHECKOUT" / "x.pdf").write_bytes(b"x")
+    (tmp_path / "BRASIL").mkdir()
+    (tmp_path / "BRASIL" / "PRINCIPAL X.pdf").write_bytes(b"x")
+    r = scanner.analisar_rede(tmp_path)
+    assert "PAG CHECKOUT" not in [pp["pasta"] for pp in r["paises"]]
+    assert not any("checkout" in ig["arquivo"].lower() for ig in r["ignorados"])
+
+
+def test_rede_reconhece_republica_tcheca(tmp_path):
+    p = tmp_path / "REPUBLICA TCHECA"
+    p.mkdir()
+    (p / "PRINCIPAL REDE X.pdf").write_bytes(b"x")
+    r = scanner.analisar_rede(tmp_path)
+    assert "REPUBLICA TCHECA" in [pp["pasta"] for pp in r["paises"]]
+    assert r["grupos"][0]["idiomas"][0]["codigo"] == "cs"
+
+
 # ---------------------------------------------------------------------------
 # Erros
 # ---------------------------------------------------------------------------

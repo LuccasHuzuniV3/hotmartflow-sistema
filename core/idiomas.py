@@ -45,6 +45,10 @@ _ALIASES = {
     "russo": "ru",
     "coreia": "ko",
     "coreia do sul": "ko",
+    "republica tcheca": "cs",
+    "republica checa": "cs",
+    "tcheca": "cs",
+    "chequia": "cs",
 }
 
 
