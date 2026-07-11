@@ -25,6 +25,8 @@ _DEFAULTS = {
         "tamanho_max": 900,
     },
     "pastas_recentes": [],
+    # quantas gerações/traduções rodam AO MESMO TEMPO no "Gerar e traduzir tudo"
+    "traduzir_simultaneas": 15,
     # robo: ensaio = modo seguro; delay_digitacao_ms = ms por tecla (anti-bot Hotmart)
     "robo": {"ensaio": True, "delay_digitacao_ms": 45, "cdp_port": 9222},
 }

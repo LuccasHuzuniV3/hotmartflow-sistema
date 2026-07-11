@@ -152,6 +152,7 @@ async function carregarConfig() {
   $("cfg-tom").value = s.descricao.tom;
   $("cfg-tam-min").value = s.descricao.tamanho_min;
   $("cfg-tam-max").value = s.descricao.tamanho_max;
+  $("cfg-traduzir-simultaneas").value = s.traduzir_simultaneas || 15;
   $("cfg-coprod-email").value = s.coproducao.email;
   $("cfg-coprod-pct").value = s.coproducao.percentual;
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
@@ -187,6 +188,7 @@ $("btn-salvar-config").addEventListener("click", async () => {
       tamanho_min: parseInt($("cfg-tam-min").value || "400", 10),
       tamanho_max: parseInt($("cfg-tam-max").value || "900", 10),
     },
+    traduzir_simultaneas: parseInt($("cfg-traduzir-simultaneas").value || "15", 10),
     coproducao: {
       email: $("cfg-coprod-email").value.trim(),
       percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
@@ -562,9 +564,13 @@ async function traduzirIdioma(pid, codigo) {
   }
 }
 
-// Quantas traducoes rodam AO MESMO TEMPO. Cada chamada do agy abre um processo
-// node — sem limite, 19 idiomas de uma vez pesam a maquina e arriscam EMFILE.
-const TRADUCOES_SIMULTANEAS = 5;
+// Quantas traduções/gerações rodam AO MESMO TEMPO (limite global). Cada chamada
+// do agy abre um processo node — sem limite, 180 de uma vez travariam a máquina.
+// Configurável na aba Config (padrão 15).
+function limiteTraducoes() {
+  const n = parseInt(estado.settings?.traduzir_simultaneas, 10);
+  return (n && n > 0) ? n : 15;
+}
 
 async function traduzirLote(pid, itens) {
   const fila = [...itens];
@@ -587,7 +593,7 @@ async function traduzirLote(pid, itens) {
     }
   };
   await Promise.all(Array.from(
-    { length: Math.min(TRADUCOES_SIMULTANEAS, fila.length) },
+    { length: Math.min(limiteTraducoes(), fila.length) },
     () => trabalhador(),
   ));
   return erros;
@@ -627,7 +633,7 @@ async function processarTudo() {
   if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
   btn.classList.add("ocupado"); btn.disabled = true;
 
-  const sem = criarSemaforo(TRADUCOES_SIMULTANEAS);
+  const sem = criarSemaforo(limiteTraducoes());
   let erros = 0;
 
   // marca tudo que vai ser processado (spinner) numa render so
