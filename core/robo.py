@@ -443,16 +443,26 @@ class Tela:
             ]
 
         def tentar(fabricas, tmo):
-            for ctx in self._contextos():
-                for loc in fabricas(ctx):
-                    try:
-                        loc.first.wait_for(state="visible", timeout=tmo)
-                        loc.first.click()
-                        self.page.wait_for_timeout(150)
-                        return True
-                    except Exception:
-                        continue
-            return False
+            # POLLING rápido: varre página+iframes com is_visible (instantâneo) num
+            # loop de ate 'tmo' ms, e clica assim que aparece — em vez de esperar
+            # 'tmo' BLOQUEANDO em cada candidato (o que fazia o select 'Sócio' levar
+            # 16s varrendo os iframes). Clique com timeout curto: candidato ruim
+            # falha rápido e passa pro próximo.
+            fim = time.time() + tmo / 1000.0
+            while True:
+                for ctx in self._contextos():
+                    for loc in fabricas(ctx):
+                        try:
+                            el = loc.first
+                            if el.is_visible():
+                                el.click(timeout=2500)
+                                self.page.wait_for_timeout(150)
+                                return True
+                        except Exception:
+                            continue
+                if time.time() >= fim:
+                    return False
+                self.page.wait_for_timeout(100)
 
         # 1) tentativa RÁPIDA sem digitar (pega opções já visíveis, ex.: a 1ª = Sócio)
         if tentar(exatas, 250):
@@ -569,7 +579,7 @@ class Tela:
                     try:
                         el = loc.first
                         if el.is_visible():         # checagem instantanea (nao bloqueia)
-                            el.click()
+                            el.click(timeout=2500)   # curto: candidato ruim falha rapido
                             self.page.wait_for_timeout(300)
                             return
                     except Exception:

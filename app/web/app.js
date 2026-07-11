@@ -824,6 +824,31 @@ function tocarAlarme() {
   } catch (_) { /* sem áudio disponível — segue sem alarme */ }
 }
 
+// Alarme de ERRO — som GRAVE e DESCENDENTE (square/áspero), bem diferente do
+// chime alegre de sucesso, pra você reconhecer "deu ruim" só pelo ouvido.
+function tocarAlarmeErro() {
+  if (!$("chk-alarme").checked) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let t = ctx.currentTime + 0.05;
+    for (let rodada = 0; rodada < 3; rodada++) {
+      for (const freq of [330, 233]) {   // descendente e grave (uh-oh)
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "square"; osc.frequency.value = freq;   // square = mais áspero
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.32);
+        t += 0.30;
+      }
+      t += 0.14;
+    }
+    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 6000);
+  } catch (_) { /* sem áudio disponível — segue sem alarme */ }
+}
+
 $("chk-alarme").addEventListener("change", async () => {
   try { await api("POST", "/api/settings", { robo: { alarme: $("chk-alarme").checked } }); }
   catch (_) {}
@@ -959,6 +984,7 @@ async function atualizarPainelPub() {
   renderPainelPub(r.job, r.ativo);
   if (!r.ativo) {
     pararPollPublicacao(false);
+    if (r.job.estado === "erro") tocarAlarmeErro();  // 🔔 avisa que deu erro
     await carregarProdutos(); // reflete status publicado/erro/revisado nas linhas
   }
 }

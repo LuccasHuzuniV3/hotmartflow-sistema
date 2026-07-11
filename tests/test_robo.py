@@ -200,7 +200,7 @@ class _LocTextoFake:
     def is_visible(self):
         return self.estado["relogio"]["t"] >= self.estado["visivel_apos"]
 
-    def click(self):
+    def click(self, timeout=None):
         self.estado["cliques"].append("x")
 
 
@@ -250,6 +250,48 @@ def test_clicar_por_texto_levanta_se_nunca_aparece(monkeypatch):
     with pytest.raises(robo.RoboError):
         robo.Tela.clicar_por_texto(fake, "não existe")
     assert relogio["t"] >= 15.0  # respeitou o timeout antes de desistir
+
+
+# ---------------------------------------------------------------------------
+# escolher_opcao — mesmo polling rápido (clica a opção assim que fica visível)
+# ---------------------------------------------------------------------------
+class _CampoFake:
+    def click(self, **k):
+        pass
+
+    def press_sequentially(self, *a, **k):
+        pass
+
+    def type(self, *a, **k):
+        pass
+
+
+class _TelaOpcaoFake:
+    def __init__(self, visivel_apos, relogio):
+        self.estado = {"visivel_apos": visivel_apos, "relogio": relogio, "cliques": []}
+        self.delay_digitacao = 8
+        import types
+        self.page = types.SimpleNamespace(
+            wait_for_timeout=lambda ms: relogio.__setitem__("t", relogio["t"] + ms / 1000.0))
+        self.job = types.SimpleNamespace(log=lambda *a, **k: None)
+
+    def _localizar(self, chave, timeout=0):
+        return _CampoFake()
+
+    def _contextos(self):
+        return [_CtxTextoFake(self.estado)]  # reusa o contexto fake do bloco acima
+
+    def shot(self, nome):
+        pass
+
+
+def test_escolher_opcao_clica_rapido_quando_opcao_visivel(monkeypatch):
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(robo.time, "time", lambda: relogio["t"])
+    fake = _TelaOpcaoFake(visivel_apos=0.0, relogio=relogio)  # opção já visível
+    robo.Tela.escolher_opcao(fake, "campo_moeda", "Dólar Americano")
+    assert fake.estado["cliques"] == ["x"]
+    assert relogio["t"] < 1.0   # pegou na tentativa rápida — nem precisou digitar
 
 
 # ---------------------------------------------------------------------------
