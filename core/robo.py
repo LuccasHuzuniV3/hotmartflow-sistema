@@ -542,9 +542,15 @@ class Tela:
         self.page.wait_for_timeout(600)
         self.job.log(f"Club escolhido: {menor} produtos (com espaço).")
 
-    def clicar_por_texto(self, texto: str) -> None:
+    def clicar_por_texto(self, texto: str, timeout: int = 15000) -> None:
         """Clica num botao/chip que tenha exatamente esse texto (ex.: categoria
-        'Espiritualidade', que na Hotmart e um botao, nao um dropdown)."""
+        'Espiritualidade' ou 'Modelo de parceria de negócio' na coprodução).
+
+        POLLING rápido: em vez de esperar 900ms bloqueando em CADA candidato (o
+        que explodia pra dezenas de segundos varrendo os iframes — 43s num clique
+        só!), faz varreduras INSTANTÂNEAS (is_visible) repetidas e clica assim que
+        o elemento aparece. Mesma busca (página + iframes, 4 formas), sem o
+        desperdício de esperar cada candidato falhar."""
         import re
         alvo = re.compile(rf"^\s*{re.escape(texto)}\s*$", re.I)
 
@@ -556,17 +562,21 @@ class Tela:
                 ctx.get_by_text(alvo),
             ]
 
-        for _ in range(2):  # procura na pagina E nos iframes
-            for ctx in self._contextos():
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for ctx in self._contextos():          # pagina + iframes
                 for loc in fabricas(ctx):
                     try:
-                        loc.first.wait_for(state="visible", timeout=900)
-                        loc.first.click()
-                        self.page.wait_for_timeout(300)
-                        return
+                        el = loc.first
+                        if el.is_visible():         # checagem instantanea (nao bloqueia)
+                            el.click()
+                            self.page.wait_for_timeout(300)
+                            return
                     except Exception:
                         continue
-            self.page.wait_for_timeout(400)
+            if time.time() >= fim:
+                break
+            self.page.wait_for_timeout(200)         # espera curta e re-varre
         self.shot(f"erro_botao_{texto}")
         raise RoboError(f"Não achei o botão/opção '{texto}'. Print salvo em data/publicacoes.")
 

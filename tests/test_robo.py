@@ -184,6 +184,75 @@ def test_finalizar_nao_declara_sucesso_sem_clicar():
 
 
 # ---------------------------------------------------------------------------
+# clicar_por_texto — polling rápido (clica assim que aparece, sem varrer 900ms/candidato)
+# ---------------------------------------------------------------------------
+class _LocTextoFake:
+    def __init__(self, estado):
+        self.estado = estado
+
+    @property
+    def first(self):
+        return self
+
+    def filter(self, **k):
+        return self
+
+    def is_visible(self):
+        return self.estado["relogio"]["t"] >= self.estado["visivel_apos"]
+
+    def click(self):
+        self.estado["cliques"].append("x")
+
+
+class _CtxTextoFake:
+    def __init__(self, estado):
+        self.estado = estado
+
+    def get_by_role(self, *a, **k):
+        return _LocTextoFake(self.estado)
+
+    def get_by_text(self, *a, **k):
+        return _LocTextoFake(self.estado)
+
+    def locator(self, *a, **k):
+        return _LocTextoFake(self.estado)
+
+
+class _TelaTextoFake:
+    def __init__(self, visivel_apos, relogio):
+        self.estado = {"visivel_apos": visivel_apos, "relogio": relogio, "cliques": []}
+        import types
+        # wait_for_timeout AVANCA o relogio (simula o tempo passando no polling)
+        self.page = types.SimpleNamespace(
+            wait_for_timeout=lambda ms: relogio.__setitem__("t", relogio["t"] + ms / 1000.0))
+        self.job = types.SimpleNamespace(log=lambda *a, **k: None)
+
+    def _contextos(self):
+        return [_CtxTextoFake(self.estado)]
+
+    def shot(self, nome):
+        pass
+
+
+def test_clicar_por_texto_clica_assim_que_visivel(monkeypatch):
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(robo.time, "time", lambda: relogio["t"])
+    fake = _TelaTextoFake(visivel_apos=0.6, relogio=relogio)  # aparece em 0.6s
+    robo.Tela.clicar_por_texto(fake, "Modelo de parceria")
+    assert fake.estado["cliques"] == ["x"]
+    assert relogio["t"] < 2.0   # achou rápido — NÃO esperou os 15s (nem 43s)
+
+
+def test_clicar_por_texto_levanta_se_nunca_aparece(monkeypatch):
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(robo.time, "time", lambda: relogio["t"])
+    fake = _TelaTextoFake(visivel_apos=9999, relogio=relogio)  # nunca aparece
+    with pytest.raises(robo.RoboError):
+        robo.Tela.clicar_por_texto(fake, "não existe")
+    assert relogio["t"] >= 15.0  # respeitou o timeout antes de desistir
+
+
+# ---------------------------------------------------------------------------
 # Cronometro por etapa (medicao de onde o tempo vai)
 # ---------------------------------------------------------------------------
 def test_job_cronometra_cada_etapa(monkeypatch):
