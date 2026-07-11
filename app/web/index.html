@@ -121,8 +121,18 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; ...
           </select>
         </div>
         <div class="campo" id="grupo-agy">
-          <label>Modelo do agy <small>(vazio = padrão; confira nomes com "agy models")</small></label>
-          <input id="cfg-agy-model" type="text" placeholder="padrão do agy" spellcheck="false">
+          <label>Modelo do agy <small>(pra traduzir, o Flash é o mais rápido e barato)</small></label>
+          <select id="cfg-agy-model">
+            <option value="">Padrão do agy (Gemini 3.5 Flash Medium)</option>
+            <option value="Gemini 3.5 Flash (Low)">Gemini 3.5 Flash (Low) — mais rápido e barato</option>
+            <option value="Gemini 3.5 Flash (Medium)">Gemini 3.5 Flash (Medium) — balanceado</option>
+            <option value="Gemini 3.5 Flash (High)">Gemini 3.5 Flash (High) — mais inteligente</option>
+            <option value="Gemini 3.1 Pro (Low)">Gemini 3.1 Pro (Low)</option>
+            <option value="Gemini 3.1 Pro (High)">Gemini 3.1 Pro (High)</option>
+            <option value="Claude Sonnet 4.6 (Thinking)">Claude Sonnet 4.6 (Thinking)</option>
+            <option value="Claude Opus 4.6 (Thinking)">Claude Opus 4.6 (Thinking)</option>
+            <option value="GPT-OSS 120B (Medium)">GPT-OSS 120B (Medium)</option>
+          </select>
         </div>
         <div id="grupo-openai" class="oculto-cfg">
           <div class="campo">

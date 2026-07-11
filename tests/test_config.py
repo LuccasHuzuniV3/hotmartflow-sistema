@@ -22,7 +22,7 @@ def test_carregar_cria_defaults_na_primeira_vez():
 def test_provider_padrao_e_agy():
     s = config.carregar_settings()
     assert s["provider"] == "agy"
-    assert s["agy"]["model"] == ""  # vazio = modelo padrao do agy
+    assert s["agy"]["model"] == "Gemini 3.5 Flash (Low)"  # mais barato p/ traduzir
 
 
 def test_robo_comeca_em_modo_ensaio():

@@ -11,7 +11,7 @@ ARQUIVO_SETTINGS = PASTA_CONFIG / "settings.json"
 
 _DEFAULTS = {
     "provider": "agy",  # "agy" (Antigravity CLI, igual EbookFlow) ou "openai"
-    "agy": {"model": ""},  # vazio = modelo padrao do agy
+    "agy": {"model": "Gemini 3.5 Flash (Low)"},  # mais barato/rapido p/ traduzir
     "openai": {"api_key": "", "model": "gpt-4o"},
     "precos": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
     "moeda": "USD",
