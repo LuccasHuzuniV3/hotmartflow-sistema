@@ -635,6 +635,36 @@ class Tela:
             copias.append(alvo)
         return copias
 
+    def finalizar_cadastro(self, tentativas: int = 3) -> bool:
+        """Clica em 'Finalizar Cadastro' e SÓ retorna True quando a Hotmart
+        confirma ('Enviado para aprovação'). Tenta algumas vezes, escalando o
+        tipo de clique — o botão às vezes não dispara de primeira ou fica atrás
+        do widget de chat (que intercepta o clique):
+          1ª) clique normal · 2ª) clique forçado · 3ª) dispatch do evento (passa
+          por cima de qualquer overlay)."""
+        for n in range(1, tentativas + 1):
+            try:
+                btn = self._localizar("btn_finalizar_cadastro", timeout=15000)
+                try:
+                    btn.scroll_into_view_if_needed(timeout=3000)
+                except Exception:
+                    pass
+                if n == 1:
+                    btn.click()
+                elif n == 2:
+                    btn.click(force=True)          # ignora checagem de "recebe o clique"
+                else:
+                    btn.dispatch_event("click")     # dispara direto no elemento (fura overlay)
+            except Exception:
+                self.job.log(f"Finalizar: tentativa {n} não conseguiu clicar no botão.", "aviso")
+                self.page.wait_for_timeout(1500)
+                continue
+            if self.existe_texto("Enviado para aprovação", timeout=12000):
+                return True
+            self.job.log(f"Finalizar: tentativa {n} sem confirmação da Hotmart — repetindo.", "aviso")
+            self.page.wait_for_timeout(1500)
+        return False
+
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         """Procura o texto na página E nos iframes, tentando ate 'timeout'."""
         import re
@@ -831,7 +861,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             if item.get("capa") and Path(item["capa"]).is_file():
                 tela.upload("input_capa", item["capa"])
                 job.log("Capa enviada.")
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(2500)   # capa precisa anexar antes de seguir
             else:
                 job.log("Sem capa pra esse idioma — imagem pulada.", "aviso")
             # imagens de bonus/extra NAO cabem no campo de capa (aceita 1 so)
@@ -855,7 +885,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 return
 
             tela.clicar("btn_avancar_basico")
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(2500)   # troca de tela (basico -> preco)
 
             # ---- 4. preco ---------------------------------------------------
             # Regra: todos em Dolar, SO o Brasil em Real.
@@ -876,7 +906,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             tela.preencher("campo_valor", valor)
             tela.shot("preco")
             tela.clicar("btn_salvar_continuar")
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(2500)   # salva o preco + troca pra area de membros
 
             # ---- 4b. area de membros: Club com espaco (<300) + Criar produto ----
             job.marcar_etapa("area_membros", "Área de Membros: escolhendo o Club com espaço...")
@@ -885,12 +915,12 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             tela.shot("club_escolhido")
             tela.clicar("btn_criar_produto_final")
             job.log("Produto criado (rascunho). Indo pro painel...")
-            page.wait_for_timeout(2200)
+            page.wait_for_timeout(4000)   # cria o produto de fato + navega
 
             # ---- 4c. tela "Criado com sucesso" -> Painel do produto ----------
             try:
                 tela.clicar("btn_ir_painel")
-                page.wait_for_timeout(1800)
+                page.wait_for_timeout(3500)   # navega pro painel (e captura o ID)
             except RoboError:
                 job.log("Sem 'Ir para o painel' — seguindo (talvez já no painel).", "aviso")
             # captura o ID do produto na Hotmart (da URL /products/manage/NNNN)
@@ -953,7 +983,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
                     tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
-                    page.wait_for_timeout(1200)
+                    page.wait_for_timeout(2500)   # troca pra tela de revisao do convite
                     # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
                     job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
                     inicio_2fa = time.time()
@@ -963,7 +993,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.preencher("campo_codigo_2fa", codigo)
                     tela.shot("codigo_preenchido")
                     tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(3000)   # submete o convite com o 2FA
                     tela.shot("coproducao_enviada")
                     if tela.existe_texto("erro", timeout=2000):
                         job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
@@ -974,11 +1004,20 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             # ---- 7. finalizar (direto, sem pausa) ---------------------------
             job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")
             tela.clicar("menu_painel")
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(2000)
             tela.shot("painel_final")
-            tela.clicar("btn_finalizar_cadastro", timeout=15000)
-            if not tela.existe_texto("Enviado para aprovação", timeout=15000):
-                job.log("Não vi a mensagem 'Enviado para aprovação' — confira o print final.", "aviso")
+            # SÓ segue como publicado se a Hotmart confirmar de verdade. Se nao
+            # confirmar, levanta erro -> o produto fica como 'erro' (nao entra no
+            # historico como publicado). Nunca mais "publicou" sem finalizar.
+            if not tela.finalizar_cadastro():
+                tela.shot("erro_finalizar")
+                raise RoboError(
+                    "Cliquei em 'Finalizar Cadastro' mas a Hotmart não confirmou "
+                    "('Enviado para aprovação'). O produto NÃO foi finalizado — ficou "
+                    "como rascunho. Veja o print em data/publicacoes e finalize na mão "
+                    "(confira se o botão não está atrás do balão de chat)."
+                )
+            job.log("Cadastro finalizado — enviado para aprovação ✔", "ok")
             tela.shot("finalizado")
 
             # ---- medição: onde o tempo foi gasto (aparece no painel e em arquivo) ----

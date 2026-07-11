@@ -114,6 +114,60 @@ def test_preparar_uploads_preserva_extensao_e_nome_vazio(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Finalizar cadastro — SÓ é sucesso se a Hotmart confirmar (nunca mente sucesso)
+# ---------------------------------------------------------------------------
+class _BtnFake:
+    def __init__(self, registro):
+        self.registro = registro
+
+    def scroll_into_view_if_needed(self, timeout=0):
+        pass
+
+    def click(self, force=False):
+        self.registro.append("click_force" if force else "click")
+
+    def dispatch_event(self, ev):
+        self.registro.append(f"dispatch:{ev}")
+
+
+class _TelaFake:
+    """Stub mínimo pra exercitar Tela.finalizar_cadastro sem navegador."""
+    def __init__(self, confirma_na_tentativa):
+        self._confirma = confirma_na_tentativa
+        self._checagens = 0
+        self.cliques: list[str] = []
+        import types
+        self.page = types.SimpleNamespace(wait_for_timeout=lambda ms: None)
+        self.job = types.SimpleNamespace(log=lambda *a, **k: None)
+
+    def _localizar(self, chave, timeout=0):
+        return _BtnFake(self.cliques)
+
+    def existe_texto(self, texto, timeout=0):
+        self._checagens += 1
+        return self._checagens >= self._confirma
+
+
+def test_finalizar_confirma_na_primeira_clica_normal():
+    fake = _TelaFake(confirma_na_tentativa=1)
+    assert robo.Tela.finalizar_cadastro(fake) is True
+    assert fake.cliques == ["click"]  # nao precisou escalar
+
+
+def test_finalizar_escala_clique_ate_confirmar():
+    fake = _TelaFake(confirma_na_tentativa=3)  # confirma so na 3a rodada
+    assert robo.Tela.finalizar_cadastro(fake) is True
+    # normal -> forcado -> dispatch (fura overlay do chat)
+    assert fake.cliques == ["click", "click_force", "dispatch:click"]
+
+
+def test_finalizar_sem_confirmacao_retorna_false():
+    fake = _TelaFake(confirma_na_tentativa=99)  # Hotmart nunca confirma
+    assert robo.Tela.finalizar_cadastro(fake) is False
+    assert len(fake.cliques) == 3  # tentou as 3 vezes antes de desistir
+
+
+# ---------------------------------------------------------------------------
 # Cronometro por etapa (medicao de onde o tempo vai)
 # ---------------------------------------------------------------------------
 def test_job_cronometra_cada_etapa(monkeypatch):
