@@ -786,7 +786,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             # ---- 1. abrir direto o formulario de eBook novo + checar login ----
             job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo na Hotmart...")
             page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(1500)
             # rede de seguranca: se caiu no login (com dados ja preenchidos), entra sozinho
             if any(m in page.url for m in hm.MARCADORES_LOGIN):
                 job.log("Caiu na tela de login — tentando entrar (dados já preenchidos)...", "aviso")
@@ -825,7 +825,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             if item.get("capa") and Path(item["capa"]).is_file():
                 tela.upload("input_capa", item["capa"])
                 job.log("Capa enviada.")
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(1500)
             else:
                 job.log("Sem capa pra esse idioma — imagem pulada.", "aviso")
             # imagens de bonus/extra NAO cabem no campo de capa (aceita 1 so)
@@ -849,7 +849,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 return
 
             tela.clicar("btn_avancar_basico")
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(1000)
 
             # ---- 4. preco ---------------------------------------------------
             # Regra: todos em Dolar, SO o Brasil em Real.
@@ -870,21 +870,21 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             tela.preencher("campo_valor", valor)
             tela.shot("preco")
             tela.clicar("btn_salvar_continuar")
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(1000)
 
             # ---- 4b. area de membros: Club com espaco (<300) + Criar produto ----
             job.marcar_etapa("area_membros", "Área de Membros: escolhendo o Club com espaço...")
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(800)
             tela.selecionar_club_com_espaco(limite=300)
             tela.shot("club_escolhido")
             tela.clicar("btn_criar_produto_final")
             job.log("Produto criado (rascunho). Indo pro painel...")
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(2200)
 
             # ---- 4c. tela "Criado com sucesso" -> Painel do produto ----------
             try:
                 tela.clicar("btn_ir_painel")
-                page.wait_for_timeout(3500)
+                page.wait_for_timeout(1800)
             except RoboError:
                 job.log("Sem 'Ir para o painel' — seguindo (talvez já no painel).", "aviso")
             # captura o ID do produto na Hotmart (da URL /products/manage/NNNN)
@@ -913,7 +913,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 pass
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1000)
             tela.upload_conteudo(uploads)  # sobe 1 por vez, renomeado, e espera cada um
             job.log(f"{len(uploads)} arquivo(s) enviado(s) ✔")
             tela.shot("pdf_enviado")
@@ -927,7 +927,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(1000)
                 # a lista de coproducoes carrega async — espera o botao aparecer (ate 20s)
                 if not tela.existe_texto("Convidar", timeout=20000):
                     job.log("A tela de Coproduções demorou a carregar — tentando mesmo assim...", "aviso")
@@ -935,7 +935,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     job.log("Já existe convite Pendente pra esse coprodutor — pulando (evita duplicar).", "aviso")
                 else:
                     tela.clicar("btn_convidar_coprodutor", timeout=15000)
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(1000)
                     tela.preencher("campo_email_coprodutor", coprod["email"])
                     tela.escolher_opcao("campo_atuacao", "Sócio do produto")
                     # o campo de % preenche da direita p/ esquerda (money): pra mostrar
@@ -947,7 +947,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.clicar("check_termos")
                     tela.shot("coproducao_preenchida")
                     tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
-                    page.wait_for_timeout(2500)
+                    page.wait_for_timeout(1200)
                     # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
                     job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
                     inicio_2fa = time.time()
@@ -957,7 +957,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     tela.preencher("campo_codigo_2fa", codigo)
                     tela.shot("codigo_preenchido")
                     tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(2000)
                     tela.shot("coproducao_enviada")
                     if tela.existe_texto("erro", timeout=2000):
                         job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
@@ -968,7 +968,7 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             # ---- 7. finalizar (direto, sem pausa) ---------------------------
             job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")
             tela.clicar("menu_painel")
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1000)
             tela.shot("painel_final")
             tela.clicar("btn_finalizar_cadastro", timeout=15000)
             if not tela.existe_texto("Enviado para aprovação", timeout=15000):
