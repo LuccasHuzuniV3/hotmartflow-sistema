@@ -768,7 +768,37 @@ async function publicarTodos() {
     await carregarProdutos();
   }
   toast(`Fila concluída: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
+  if (!estado.filaCancelada) tocarAlarme();  // 🔔 avisa que terminou tudo
 }
+
+// Alarme sonoro (Web Audio — não precisa de arquivo). 3 rodadas de bipes.
+function tocarAlarme() {
+  if (!$("chk-alarme").checked) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let t = ctx.currentTime + 0.05;
+    for (let rodada = 0; rodada < 3; rodada++) {
+      for (const freq of [660, 880, 1175]) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.24);
+        t += 0.2;
+      }
+      t += 0.18;
+    }
+    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 5000);
+  } catch (_) { /* sem áudio disponível — segue sem alarme */ }
+}
+
+$("chk-alarme").addEventListener("change", async () => {
+  try { await api("POST", "/api/settings", { robo: { alarme: $("chk-alarme").checked } }); }
+  catch (_) {}
+});
 
 async function cancelarFila() {
   estado.filaCancelada = true;
@@ -1066,6 +1096,7 @@ $("btn-atualizar").addEventListener("click", () => {
   await Promise.all([atualizarStatusKey(), carregarConfig(), carregarProdutos()]);
   checarVersao(); // mostra a versao e avisa se ha update (silencioso se offline)
   $("chk-ensaio").checked = estado.settings?.robo?.ensaio !== false;
+  $("chk-alarme").checked = estado.settings?.robo?.alarme !== false;
   // se tinha publicação rolando (F5 no meio), retoma o painel
   const pub = await api("GET", "/api/publicacao").catch(() => null);
   if (pub?.job) iniciarPollPublicacao();
