@@ -54,7 +54,7 @@ PAIS_HOTMART = {
     "sv": "Suécia",
     "fi": "Finlândia",
     "pl": "Polônia",
-    "cs": "República Tcheca",
+    "cs": "República Checa",   # na Hotmart é "Checa" (sem T), não "Tcheca"
     "sk": "Eslováquia",
     "sl": "Eslovênia",
     "hu": "Hungria",

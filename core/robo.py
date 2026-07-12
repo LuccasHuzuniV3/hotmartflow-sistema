@@ -824,6 +824,12 @@ def garantir_chrome(url: str | None = None) -> None:
         "--no-default-browser-check",
         "--disable-blink-features=AutomationControlled",
         "--profile-directory=Default",
+        # Mantém a janela 100% ativa mesmo ATRÁS de outras janelas (2º plano):
+        # sem isso o Chrome "estrangula" janelas ocultas e trava clique/visibilidade.
+        # (Não resolve janela MINIMIZADA — essa continua sem renderizar.)
+        "--disable-backgrounding-occluded-windows",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
     ]
     if url:
         args.append(url)
