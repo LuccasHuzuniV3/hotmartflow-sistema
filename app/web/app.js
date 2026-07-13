@@ -41,6 +41,18 @@ function toast(msg, tipo = "") {
   toastTimer = setTimeout(() => (t.className = "toast"), 4200);
 }
 
+// ms -> "1h 23m 45s" / "12m 05s" / "45s" (rede pode levar horas)
+function fmtDuracao(ms) {
+  const s = Math.floor(Math.max(0, ms) / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const seg = s % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  if (h > 0) return `${h}h ${pad(m)}m ${pad(seg)}s`;
+  if (m > 0) return `${m}m ${pad(seg)}s`;
+  return `${seg}s`;
+}
+
 function esc(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -771,6 +783,15 @@ async function publicarTodos() {
   estado.publicandoFila = true;
   btn.textContent = "⛔ Cancelar fila";
   let feitos = 0, pulados = 0;
+  // cronômetro da rede: inicia agora, conta ao vivo, mostra o total no fim
+  const inicioFila = Date.now();
+  const cron = $("fila-cronometro");
+  cron.classList.remove("oculto", "fim");
+  const tickCron = () => {
+    cron.textContent = `⏱ ${fmtDuracao(Date.now() - inicioFila)} · ${feitos}/${fila.length}`;
+  };
+  tickCron();
+  const timerCron = setInterval(tickCron, 1000);
   try {
     for (let n = 0; n < fila.length; n++) {
       if (estado.filaCancelada) { toast("Fila cancelada.", "aviso"); break; }
@@ -792,11 +813,19 @@ async function publicarTodos() {
       feitos++;
     }
   } finally {
+    clearInterval(timerCron);
     estado.publicandoFila = false;
     btn.textContent = "📤 Publicar todos";
     await carregarProdutos();
   }
-  toast(`Fila concluída: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
+  const total = fmtDuracao(Date.now() - inicioFila);
+  // deixa o total FIXO na tela (o toast some em 4s; a rede leva horas)
+  cron.classList.remove("oculto");
+  cron.classList.add("fim");
+  cron.textContent = estado.filaCancelada
+    ? `⏱ ${total} (cancelada) · ${feitos} publicado(s)`
+    : `⏱ Rede publicada em ${total} · ${feitos} publicado(s)${pulados ? `, ${pulados} pulado(s)` : ""}`;
+  toast(`Fila concluída em ${total}: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
   if (!estado.filaCancelada) tocarAlarme();  // 🔔 avisa que terminou tudo
 }
 
