@@ -42,6 +42,12 @@ def test_tabela_de_precos_padrao():
     assert s["precos"]["Upsell"] == 15.90
 
 
+def test_tem_tabela_de_precos_do_brasil_separada():
+    s = config.carregar_settings()
+    assert s["precos_brasil"]["Principal"] == 19.90
+    assert s["precos_brasil"]["Order Bump"] == 12.90
+
+
 def test_salvar_e_recarregar_preserva_valores():
     s = config.carregar_settings()
     s["openai"]["api_key"] = "sk-teste"

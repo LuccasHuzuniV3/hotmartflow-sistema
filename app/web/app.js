@@ -190,6 +190,13 @@ async function carregarConfig() {
       <input type="number" step="0.10" min="0" data-preco-tipo="${esc(tipo)}" value="${preco}">
     </div>`).join("");
 
+  const gridBr = $("cfg-precos-brasil");
+  gridBr.innerHTML = Object.entries(s.precos_brasil || {}).map(([tipo, preco]) => `
+    <div class="campo">
+      <label>${esc(tipo)}</label>
+      <input type="number" step="0.10" min="0" data-preco-br-tipo="${esc(tipo)}" value="${preco}">
+    </div>`).join("");
+
   // deixa o campo ja preenchido com a ultima pasta usada (sem lista de historico)
   const ultima = (s.pastas_recentes || [])[0];
   if (ultima && !$("scan-pasta").value) $("scan-pasta").value = ultima;
@@ -200,11 +207,16 @@ $("btn-salvar-config").addEventListener("click", async () => {
   document.querySelectorAll("[data-preco-tipo]").forEach((inp) => {
     precos[inp.dataset.precoTipo] = parseFloat(inp.value || "0");
   });
+  const precos_brasil = {};
+  document.querySelectorAll("[data-preco-br-tipo]").forEach((inp) => {
+    precos_brasil[inp.dataset.precoBrTipo] = parseFloat(inp.value || "0");
+  });
   const patch = {
     provider: $("cfg-provider").value,
     agy: { model: $("cfg-agy-model").value.trim() },
     openai: { api_key: $("cfg-api-key").value.trim(), model: $("cfg-model").value.trim() || "gpt-4o" },
     precos,
+    precos_brasil,
     descricao: {
       tom: $("cfg-tom").value.trim(),
       tamanho_min: parseInt($("cfg-tam-min").value || "400", 10),

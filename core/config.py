@@ -13,7 +13,10 @@ _DEFAULTS = {
     "provider": "agy",  # "agy" (Antigravity CLI, igual EbookFlow) ou "openai"
     "agy": {"model": "Gemini 3.5 Flash (Low)"},  # mais barato/rapido p/ traduzir
     "openai": {"api_key": "", "model": "gpt-4o"},
+    # tabela INTERNACIONAL (USD) — todos os países MENOS o Brasil
     "precos": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
+    # tabela do BRASIL (BRL) — separada; o Brasil NÃO puxa da internacional
+    "precos_brasil": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
     "moeda": "USD",
     "hotmart": {"categoria": "Espiritualidade", "reembolso_dias": 7},
     "coproducao": {"email": "", "percentual": 45},

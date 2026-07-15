@@ -42,6 +42,23 @@ def test_criar_aplica_preco_da_tabela_pelo_tipo():
     assert all(i["preco"] == 19.90 for i in reg["idiomas"])
 
 
+def test_criar_brasil_usa_tabela_propria_resto_usa_internacional():
+    reg = produtos.criar(
+        grupo_exemplo(), pasta_origem="C:/x",
+        precos={"Principal": 9.90},          # internacional (USD)
+        precos_brasil={"Principal": 19.90},  # Brasil (BRL) — separado
+    )
+    por_cod = {i["codigo"]: i["preco"] for i in reg["idiomas"]}
+    assert por_cod["pt-br"] == 19.90   # Brasil puxa da tabela BRL
+    assert por_cod["fil"] == 9.90      # Filipinas puxa da internacional
+
+
+def test_criar_sem_tabela_brasil_cai_na_internacional():
+    # compatibilidade: sem precos_brasil, Brasil usa a tabela internacional
+    reg = produtos.criar(grupo_exemplo(), pasta_origem="C:/x", precos={"Principal": 9.90})
+    assert all(i["preco"] == 9.90 for i in reg["idiomas"])
+
+
 def test_criar_tipo_sem_preco_na_tabela_usa_zero():
     g = grupo_exemplo()
     g["tipo"] = "Bonus"

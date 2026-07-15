@@ -70,10 +70,20 @@ def _salvar(registro: dict) -> None:
 # ---------------------------------------------------------------------------
 # API publica
 # ---------------------------------------------------------------------------
-def criar(grupo: dict, pasta_origem: str, precos: dict) -> dict:
-    """Cria um produto a partir de um grupo do scanner + tabela de precos por tipo."""
+def criar(grupo: dict, pasta_origem: str, precos: dict,
+          precos_brasil: dict | None = None) -> dict:
+    """Cria um produto a partir de um grupo do scanner + tabelas de preco por tipo.
+
+    `precos` = tabela INTERNACIONAL (USD), usada em todos os idiomas MENOS o Brasil.
+    `precos_brasil` = tabela do Brasil (BRL), aplicada só ao idioma 'pt-br'. Se não
+    vier, o Brasil cai na tabela internacional (compatibilidade)."""
     tipo = grupo["tipo"]
-    preco = float(precos.get(tipo, 0) or 0)
+    tabela_br = precos_brasil if precos_brasil is not None else precos
+
+    def preco_do_idioma(codigo: str) -> float:
+        tabela = tabela_br if codigo == "pt-br" else precos
+        return float(tabela.get(tipo, 0) or 0)
+
     registro = {
         "id": _novo_id(grupo["titulo"], tipo),
         "titulo_pt": grupo["titulo"],
@@ -91,7 +101,7 @@ def criar(grupo: dict, pasta_origem: str, precos: dict) -> dict:
                 "anexos": item.get("anexos", []),
                 "titulo": "",
                 "descricao": "",
-                "preco": preco,
+                "preco": preco_do_idioma(item["codigo"]),
                 "status": "rascunho",
                 "erro": "",
             }
