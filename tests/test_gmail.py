@@ -67,3 +67,21 @@ def test_buscar_codigo_timeout_retorna_none():
 def test_buscar_codigo_sem_credenciais_erro():
     with pytest.raises(gmail_code.GmailError):
         gmail_code.buscar_codigo("", "", timeout=1, intervalo=0, fetch=lambda e, s, d: [])
+
+
+def test_buscar_codigo_ignora_codigo_ja_usado_do_1o_convite():
+    # cenario do 2o coprodutor: o codigo do 1o convite (111222) ainda esta na
+    # caixa de entrada; o novo (555666) chega depois — nao pode devolver o velho
+    chamadas = {"n": 0}
+
+    def fake_fetch(email, senha, desde):
+        chamadas["n"] += 1
+        if chamadas["n"] < 3:
+            return ["código de segurança: 111222"]          # so o e-mail velho
+        return ["código de segurança: 555666",              # novo chegou (mais recente 1o)
+                "código de segurança: 111222"]
+
+    cod = gmail_code.buscar_codigo("x@gmail.com", "senha", timeout=5, intervalo=0,
+                                   fetch=fake_fetch, ignorar={"111222"})
+    assert cod == "555666"
+    assert chamadas["n"] >= 3  # esperou o novo em vez de devolver o velho

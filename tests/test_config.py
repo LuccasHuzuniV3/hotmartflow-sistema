@@ -48,6 +48,14 @@ def test_tem_tabela_de_precos_do_brasil_separada():
     assert s["precos_brasil"]["Order Bump"] == 12.90
 
 
+def test_tem_segundo_coprodutor_e_cupom_nos_defaults():
+    s = config.carregar_settings()
+    assert s["coproducao2"] == {"email": "", "percentual": 45}
+    assert s["cupom"]["ativo"] is False          # desligado por padrao
+    assert s["cupom"]["desconto"] == 10
+    assert s["hotmart_api"] == {"client_id": "", "client_secret": ""}
+
+
 def test_salvar_e_recarregar_preserva_valores():
     s = config.carregar_settings()
     s["openai"]["api_key"] = "sk-teste"

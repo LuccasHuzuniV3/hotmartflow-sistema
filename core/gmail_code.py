@@ -98,15 +98,19 @@ def _fetch_imap(email_addr: str, senha: str, desde_ts: float) -> list[str]:
 
 
 def buscar_codigo(email_addr: str, senha: str, *, desde_ts: float | None = None,
-                  timeout: float = 90, intervalo: float = 4, fetch=None) -> str | None:
+                  timeout: float = 90, intervalo: float = 4, fetch=None,
+                  ignorar=None) -> str | None:
     """Fica checando o Gmail até achar o código 2FA da Hotmart (ou dar timeout).
 
     desde_ts: só aceita e-mails a partir desse momento (evita pegar código velho).
+    ignorar: códigos JÁ USADOS (ex.: do 1º convite de coprodução) — são pulados,
+    senão o 2º convite pegaria o código antigo que ainda está na caixa de entrada.
     Retorna o código (str) ou None se não achar no tempo.
     """
     if not (email_addr or "").strip() or not (senha or "").strip():
         raise GmailError("Gmail não configurado (falta e-mail ou App Password).")
     fetch = fetch or _fetch_imap
+    ignorar = set(ignorar or ())
     if desde_ts is None:
         desde_ts = time.time()
     fim = time.time() + timeout
@@ -114,7 +118,7 @@ def buscar_codigo(email_addr: str, senha: str, *, desde_ts: float | None = None,
         corpos = fetch(email_addr, senha, desde_ts)
         for corpo in corpos:
             cod = extrair_codigo(corpo)
-            if cod:
+            if cod and cod not in ignorar:
                 return cod
         if time.time() >= fim:
             return None

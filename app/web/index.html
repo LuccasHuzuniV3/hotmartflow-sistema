@@ -201,7 +201,7 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
         <h2>Coprodução <small>(usado na Fase B — robô)</small></h2>
         <div class="campo-duplo">
           <div class="campo">
-            <label>E-mail do coprodutor</label>
+            <label>E-mail do coprodutor 1</label>
             <input id="cfg-coprod-email" type="text" spellcheck="false">
           </div>
           <div class="campo">
@@ -209,6 +209,50 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
             <input id="cfg-coprod-pct" type="number" min="1" max="99">
           </div>
         </div>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>E-mail do coprodutor 2 <small>(opcional)</small></label>
+            <input id="cfg-coprod2-email" type="text" spellcheck="false" placeholder="deixe vazio se for só 1">
+          </div>
+          <div class="campo">
+            <label>% de comissão</label>
+            <input id="cfg-coprod2-pct" type="number" min="1" max="99">
+          </div>
+        </div>
+        <small>Com 2 coprodutores, o robô convida um de cada vez com <b>40s de intervalo</b> — evita o erro de misturar os códigos 2FA do Gmail.</small>
+      </div>
+
+      <div class="card config-card">
+        <h2>Cupom automático <small>(só no ebook PRINCIPAL, via API)</small></h2>
+        <label class="robo-ensaio" style="margin-bottom:12px">
+          <input type="checkbox" id="cfg-cupom-ativo"> Criar cupom automaticamente após publicar o Principal
+        </label>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>Código do cupom <small>(máx. 25 caracteres)</small></label>
+            <input id="cfg-cupom-codigo" type="text" spellcheck="false" maxlength="25" placeholder="PROMO10">
+          </div>
+          <div class="campo">
+            <label>Desconto (%)</label>
+            <input id="cfg-cupom-desconto" type="number" min="1" max="98">
+          </div>
+        </div>
+        <small>Precisa das credenciais da API abaixo. O cupom é criado no produto assim que o robô finaliza o cadastro.</small>
+      </div>
+
+      <div class="card config-card">
+        <h2>API da Hotmart <small>(credenciais — developers.hotmart.com)</small></h2>
+        <div class="campo-duplo">
+          <div class="campo">
+            <label>Client ID</label>
+            <input id="cfg-hapi-id" type="text" spellcheck="false">
+          </div>
+          <div class="campo">
+            <label>Client Secret</label>
+            <input id="cfg-hapi-secret" type="password" spellcheck="false">
+          </div>
+        </div>
+        <small>Se criam em <b>developers.hotmart.com → Minhas credenciais → Criar credencial</b>, logado na MESMA conta que publica os produtos.</small>
       </div>
 
       <div class="card config-card">

@@ -295,6 +295,71 @@ def test_escolher_opcao_clica_rapido_quando_opcao_visivel(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Cupom automático pós-publicação (só Principal, best-effort)
+# ---------------------------------------------------------------------------
+def _job_publicado(hotmart_id="8108732"):
+    job = robo.Job({"id": "p", "titulo_pt": "X"},
+                   {"titulo": "T", "descricao": "D", "codigo": "de", "pais": "Alemao"}, "real")
+    job.hotmart_id = hotmart_id
+    return job
+
+
+SETTINGS_CUPOM = {
+    "cupom": {"ativo": True, "codigo": "PROMO10", "desconto": 10},
+    "hotmart_api": {"client_id": "id1", "client_secret": "sec1"},
+}
+
+
+def test_cupom_criado_no_principal(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
+                        lambda **kw: chamadas.append(kw) or {})
+    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Principal"}, SETTINGS_CUPOM)
+    assert len(chamadas) == 1
+    assert chamadas[0]["product_id"] == "8108732"
+    assert chamadas[0]["codigo"] == "PROMO10"
+    assert chamadas[0]["desconto_pct"] == 10.0
+
+
+def test_cupom_nao_criado_em_bump_upsell(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
+                        lambda **kw: chamadas.append(kw) or {})
+    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Order Bump"}, SETTINGS_CUPOM)
+    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Upsell"}, SETTINGS_CUPOM)
+    assert chamadas == []  # cupom é SÓ pro Principal
+
+
+def test_cupom_desligado_nao_chama_api(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
+                        lambda **kw: chamadas.append(kw) or {})
+    s = {**SETTINGS_CUPOM, "cupom": {"ativo": False, "codigo": "PROMO10", "desconto": 10}}
+    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Principal"}, s)
+    assert chamadas == []
+
+
+def test_cupom_falha_vira_aviso_nao_derruba(monkeypatch):
+    def explode(**kw):
+        raise robo.hotmart_api.HotmartApiError("HTTP 422: coupon exists")
+
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom", explode)
+    job = _job_publicado()
+    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)  # nao levanta
+    assert any("Cupom" in m["texto"] and m["nivel"] == "aviso" for m in job.mensagens)
+
+
+def test_cupom_sem_hotmart_id_avisa_e_pula(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
+                        lambda **kw: chamadas.append(kw) or {})
+    job = _job_publicado(hotmart_id="")
+    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)
+    assert chamadas == []
+    assert any("ID do produto" in m["texto"] for m in job.mensagens)
+
+
+# ---------------------------------------------------------------------------
 # Cronometro por etapa (medicao de onde o tempo vai)
 # ---------------------------------------------------------------------------
 def test_job_cronometra_cada_etapa(monkeypatch):

@@ -32,6 +32,7 @@ from pathlib import Path
 from core import produtos
 from core import gmail_code
 from core import historico
+from core import hotmart_api
 from core import hotmart_map as hm
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -266,6 +267,36 @@ def _validar_item(produto: dict, item: dict, modo: str) -> None:
             raise RoboError(f"{item['pais']}: anexo '{anexo.get('nome')}' sem PDF em {anexo.get('pdf')!r}.")
 
 
+def _criar_cupom_pos_publicacao(job: Job, produto: dict, settings: dict) -> None:
+    """Cria o cupom de desconto no ebook PRINCIPAL recém-publicado (via API).
+
+    Best-effort: qualquer falha vira aviso no painel — a publicação já foi
+    concluída e NUNCA é derrubada por causa do cupom."""
+    c = settings.get("cupom", {})
+    if not c.get("ativo"):
+        return
+    if produto.get("tipo") != "Principal":
+        return  # cupom é SÓ pro ebook principal
+    if not (job.hotmart_id or "").strip():
+        job.log("Cupom: não capturei o ID do produto na Hotmart — crie na mão.", "aviso")
+        return
+    api = settings.get("hotmart_api", {})
+    try:
+        hotmart_api.criar_cupom(
+            product_id=job.hotmart_id,
+            codigo=c.get("codigo", ""),
+            desconto_pct=float(c.get("desconto", 0) or 0),
+            client_id=api.get("client_id", ""),
+            client_secret=api.get("client_secret", ""),
+        )
+        job.log(f"Cupom '{(c.get('codigo') or '').strip()}' ({c.get('desconto')}%) "
+                f"criado no produto {job.hotmart_id} ✔", "ok")
+    except hotmart_api.HotmartApiError as e:
+        job.log(f"Cupom: {e} — o produto foi publicado normalmente.", "aviso")
+    except Exception as e:
+        job.log(f"Cupom: falha inesperada ({str(e)[:150]}) — produto publicado normalmente.", "aviso")
+
+
 def _rodar(job: Job, produto: dict, item: dict) -> None:
     try:
         if job.modo == "simulado":
@@ -288,6 +319,12 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
                     tipo=tipo, hotmart_id=job.hotmart_id)
             except Exception:
                 pass  # historico nunca derruba a publicacao
+            # cupom automático no PRINCIPAL (via API) — best-effort, nunca derruba
+            from core import config as _cfg
+            try:
+                _criar_cupom_pos_publicacao(job, produto, _cfg.carregar_settings())
+            except Exception:
+                pass
         else:
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "revisado"})
             job.log(f"Modo {job.modo} concluído — nada foi enviado de verdade.", "ok")
@@ -855,15 +892,20 @@ def _conectar(p):
     return browser, page
 
 
-def _obter_codigo_2fa(job: Job, settings: dict, *, desde_ts: float) -> str:
-    """Lê o código 2FA no Gmail (se configurado e ligado); senão pausa pro humano."""
+def _obter_codigo_2fa(job: Job, settings: dict, *, desde_ts: float,
+                      ignorar=None) -> str:
+    """Lê o código 2FA no Gmail (se configurado e ligado); senão pausa pro humano.
+
+    ignorar: códigos já usados nesta publicação (1º convite de coprodução) —
+    evita reaproveitar o código antigo quando tem 2 coprodutores."""
     gm = settings.get("gmail", {})
     ligado = gm.get("auto") and (gm.get("email") or "").strip() and (gm.get("app_password") or "").strip()
     if ligado:
         job.log("Buscando o código de segurança no Gmail automaticamente...")
         try:
             codigo = gmail_code.buscar_codigo(
-                gm["email"], gm["app_password"], desde_ts=desde_ts, timeout=90)
+                gm["email"], gm["app_password"], desde_ts=desde_ts, timeout=90,
+                ignorar=ignorar)
         except gmail_code.GmailError as e:
             job.log(f"Gmail: {e}", "aviso")
             codigo = None
@@ -1027,10 +1069,20 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.log(f"{len(uploads)} arquivo(s) enviado(s) ✔")
             tela.shot("pdf_enviado")
 
-            # ---- 6. coproducao ----------------------------------------------
-            coprod = s["coproducao"]
-            if (coprod.get("email") or "").strip():
-                job.marcar_etapa("coproducao", f"Coprodução: {coprod['email']} ({coprod['percentual']}%)...")
+            # ---- 6. coproducao (1 ou 2 coprodutores, em SEQUENCIA) -----------
+            coprodutores = [c for c in (s.get("coproducao", {}), s.get("coproducao2", {}))
+                            if (c.get("email") or "").strip()]
+            if not coprodutores:
+                job.log("Sem coprodutor configurado — etapa pulada.")
+            codigos_usados: set[str] = set()  # códigos 2FA já usados (não repetir no 2º)
+            for n_cop, coprod in enumerate(coprodutores, 1):
+                if n_cop > 1:
+                    # intervalo entre convites: o código 2FA do 2º precisa chegar
+                    # DEPOIS do 1º no Gmail — sem isso os códigos se misturam
+                    job.log("Aguardando 40s antes do próximo convite (pra não misturar os códigos 2FA)...")
+                    page.wait_for_timeout(40_000)
+                job.marcar_etapa("coproducao",
+                                 f"Coprodução {n_cop}/{len(coprodutores)}: {coprod['email']} ({coprod['percentual']}%)...")
                 tela.ir_para_coproducao()
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
@@ -1042,47 +1094,47 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     job.log("A tela de Coproduções demorou a carregar — tentando mesmo assim...", "aviso")
                 job.lap("coprod: abrir tela + carregar lista")
                 if tela.existe_texto(coprod["email"]) and tela.existe_texto("Pendente"):
-                    job.log("Já existe convite Pendente pra esse coprodutor — pulando (evita duplicar).", "aviso")
-                else:
-                    tela.clicar("btn_convidar_coprodutor", timeout=15000)
-                    page.wait_for_timeout(1000)
-                    tela.preencher("campo_email_coprodutor", coprod["email"])
-                    job.lap("coprod: abrir form + email")
-                    tela.escolher_opcao("campo_atuacao", "Sócio do produto")
-                    job.lap("coprod: select 'Sócio do produto'")
-                    # o campo de % preenche da direita p/ esquerda (money): pra mostrar
-                    # "P,00" digitamos os digitos de P*100 (ex.: 10 -> "1000" -> "10,00").
-                    digitos_pct = str(int(round(float(coprod["percentual"]) * 100)))
-                    tela.preencher("campo_percentual", digitos_pct)
-                    job.lap("coprod: digitar percentual")
-                    # modelo de coproducao: "parceria de negocio"
-                    tela.clicar_por_texto("Modelo de parceria de negócio")
-                    job.lap("coprod: click 'Modelo parceria'")
-                    tela.clicar("check_termos")
-                    job.lap("coprod: click termos")
-                    tela.shot("coproducao_preenchida")
-                    tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
-                    job.lap("coprod: enviar (Continuar)")
-                    page.wait_for_timeout(2500)   # troca pra tela de revisao do convite
-                    # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
-                    job.marcar_etapa("coproducao_revisao", "Revisão do convite — vou pedir o código 2FA...")
-                    inicio_2fa = time.time()
-                    tela.clicar_por_texto("Li e concordo com as informações")
-                    tela.shot("coproducao_revisao")
-                    job.lap("revisao: concordar")
-                    codigo = _obter_codigo_2fa(job, s, desde_ts=inicio_2fa)
-                    job.lap("revisao: ESPERAR o e-mail do 2FA")
-                    tela.preencher("campo_codigo_2fa", codigo)
-                    tela.shot("codigo_preenchido")
-                    tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
-                    job.lap("revisao: enviar convite com código")
-                    page.wait_for_timeout(3000)   # submete o convite com o 2FA
-                    tela.shot("coproducao_enviada")
-                    if tela.existe_texto("erro", timeout=2000):
-                        job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
-                                "entrado como Pendente mesmo assim (confira depois). Seguindo em frente.", "aviso")
-            else:
-                job.log("Sem coprodutor configurado — etapa pulada.")
+                    job.log(f"Já existe convite Pendente pra {coprod['email']} — pulando (evita duplicar).", "aviso")
+                    continue
+                tela.clicar("btn_convidar_coprodutor", timeout=15000)
+                page.wait_for_timeout(1000)
+                tela.preencher("campo_email_coprodutor", coprod["email"])
+                job.lap("coprod: abrir form + email")
+                tela.escolher_opcao("campo_atuacao", "Sócio do produto")
+                job.lap("coprod: select 'Sócio do produto'")
+                # o campo de % preenche da direita p/ esquerda (money): pra mostrar
+                # "P,00" digitamos os digitos de P*100 (ex.: 10 -> "1000" -> "10,00").
+                digitos_pct = str(int(round(float(coprod["percentual"]) * 100)))
+                tela.preencher("campo_percentual", digitos_pct)
+                job.lap("coprod: digitar percentual")
+                # modelo de coproducao: "parceria de negocio"
+                tela.clicar_por_texto("Modelo de parceria de negócio")
+                job.lap("coprod: click 'Modelo parceria'")
+                tela.clicar("check_termos")
+                job.lap("coprod: click termos")
+                tela.shot(f"coproducao_{n_cop}_preenchida")
+                tela.clicar("btn_enviar_convite")  # "Continuar" -> tela de revisão
+                job.lap("coprod: enviar (Continuar)")
+                page.wait_for_timeout(2500)   # troca pra tela de revisao do convite
+                # ---- tela de revisão: concordar -> digitar código 2FA -> enviar ----
+                job.marcar_etapa("coproducao_revisao",
+                                 f"Revisão do convite {n_cop} — vou pedir o código 2FA...")
+                inicio_2fa = time.time()
+                tela.clicar_por_texto("Li e concordo com as informações")
+                tela.shot(f"coproducao_{n_cop}_revisao")
+                job.lap("revisao: concordar")
+                codigo = _obter_codigo_2fa(job, s, desde_ts=inicio_2fa, ignorar=codigos_usados)
+                job.lap("revisao: ESPERAR o e-mail do 2FA")
+                tela.preencher("campo_codigo_2fa", codigo)
+                codigos_usados.add(codigo)
+                tela.shot(f"codigo_{n_cop}_preenchido")
+                tela.clicar("btn_enviar_convite_final", timeout=15000)  # envia com o código
+                job.lap("revisao: enviar convite com código")
+                page.wait_for_timeout(3000)   # submete o convite com o 2FA
+                tela.shot(f"coproducao_{n_cop}_enviada")
+                if tela.existe_texto("erro", timeout=2000):
+                    job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
+                            "entrado como Pendente mesmo assim (confira depois). Seguindo em frente.", "aviso")
 
             # ---- 7. finalizar (direto, sem pausa) ---------------------------
             job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")

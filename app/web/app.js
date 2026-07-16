@@ -177,6 +177,13 @@ async function carregarConfig() {
   $("cfg-traduzir-simultaneas").value = s.traduzir_simultaneas || 15;
   $("cfg-coprod-email").value = s.coproducao.email;
   $("cfg-coprod-pct").value = s.coproducao.percentual;
+  $("cfg-coprod2-email").value = (s.coproducao2 && s.coproducao2.email) || "";
+  $("cfg-coprod2-pct").value = (s.coproducao2 && s.coproducao2.percentual) || 45;
+  $("cfg-cupom-ativo").checked = !!(s.cupom && s.cupom.ativo);
+  $("cfg-cupom-codigo").value = (s.cupom && s.cupom.codigo) || "";
+  $("cfg-cupom-desconto").value = (s.cupom && s.cupom.desconto) || 10;
+  $("cfg-hapi-id").value = (s.hotmart_api && s.hotmart_api.client_id) || "";
+  $("cfg-hapi-secret").value = (s.hotmart_api && s.hotmart_api.client_secret) || "";
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
   $("cfg-cdp-port").value = (s.robo && s.robo.cdp_port) || 9222;
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
@@ -226,6 +233,19 @@ $("btn-salvar-config").addEventListener("click", async () => {
     coproducao: {
       email: $("cfg-coprod-email").value.trim(),
       percentual: parseInt($("cfg-coprod-pct").value || "45", 10),
+    },
+    coproducao2: {
+      email: $("cfg-coprod2-email").value.trim(),
+      percentual: parseInt($("cfg-coprod2-pct").value || "45", 10),
+    },
+    cupom: {
+      ativo: $("cfg-cupom-ativo").checked,
+      codigo: $("cfg-cupom-codigo").value.trim(),
+      desconto: parseInt($("cfg-cupom-desconto").value || "10", 10),
+    },
+    hotmart_api: {
+      client_id: $("cfg-hapi-id").value.trim(),
+      client_secret: $("cfg-hapi-secret").value.trim(),
     },
     robo: {
       delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10),
