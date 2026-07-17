@@ -11,7 +11,9 @@ from core import produtos, robo  # noqa: E402 (env precisa vir antes)
 
 @pytest.fixture(autouse=True)
 def ambiente(tmp_path, monkeypatch):
+    from core import cupons as _cupons
     monkeypatch.setattr(produtos, "PASTA_PRODUTOS", tmp_path / "produtos")
+    monkeypatch.setattr(_cupons, "ARQUIVO", tmp_path / "cupons_pendentes.jsonl")
     # zera o job global entre testes
     robo._JOB = None
     yield
@@ -339,14 +341,37 @@ def test_cupom_desligado_nao_chama_api(monkeypatch):
     assert chamadas == []
 
 
-def test_cupom_falha_vira_aviso_nao_derruba(monkeypatch):
+def test_cupom_falha_vira_aviso_e_entra_na_fila_de_pendentes(monkeypatch):
+    from core import cupons as _cupons
+
     def explode(**kw):
-        raise robo.hotmart_api.HotmartApiError("HTTP 422: coupon exists")
+        raise robo.hotmart_api.HotmartApiError("HTTP 400: em análise")
 
     monkeypatch.setattr(robo.hotmart_api, "criar_cupom", explode)
     job = _job_publicado()
     robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)  # nao levanta
     assert any("Cupom" in m["texto"] and m["nivel"] == "aviso" for m in job.mensagens)
+    # ficou guardado pra retentar depois
+    pendentes = _cupons.listar()
+    assert len(pendentes) == 1
+    assert pendentes[0]["product_id"] == "8108732"
+    assert pendentes[0]["codigo"] == "PROMO10"
+
+
+def test_publicacao_retenta_cupons_pendentes_de_antes(monkeypatch):
+    from core import cupons as _cupons
+    # produto ANTIGO ficou pendente; agora a Hotmart aceita
+    _cupons.registrar(product_id="7000001", codigo="PROMO10", desconto_pct=10,
+                      pais="Italia")
+    criados = []
+    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
+                        lambda **kw: criados.append(kw["product_id"]) or {})
+    job = _job_publicado(hotmart_id="8000002")
+    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)
+    # criou o pendente antigo E o do produto novo; fila esvaziou
+    assert criados == ["7000001", "8000002"]
+    assert _cupons.listar() == []
+    assert any("Cupom pendente criado" in m["texto"] for m in job.mensagens)
 
 
 def test_cupom_sem_hotmart_id_avisa_e_pula(monkeypatch):

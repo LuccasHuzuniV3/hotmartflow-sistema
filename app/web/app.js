@@ -96,6 +96,7 @@ function numeroTipoHist(tipo) {
 }
 
 async function carregarHistorico() {
+  atualizarCuponsPendentes();  // roda em paralelo, não bloqueia o histórico
   let r;
   try { r = await api("GET", "/api/historico"); } catch (e) { toast(e.message, "erro"); return; }
   $("hist-resumo").textContent = r.total
@@ -125,6 +126,32 @@ async function carregarHistorico() {
     return `<div class="hist-rede"><h3>${esc(rede)} <small>${totalRede} publicação(ões)</small></h3>${corpo}</div>`;
   }).join("");
 }
+
+async function atualizarCuponsPendentes() {
+  const btn = $("btn-cupons-pendentes");
+  try {
+    const r = await api("GET", "/api/cupons-pendentes");
+    btn.classList.toggle("oculto", !r.total);
+    if (r.total) btn.textContent = `🎟️ Cupons pendentes (${r.total})`;
+  } catch (_) { btn.classList.add("oculto"); }
+}
+
+$("btn-cupons-pendentes").addEventListener("click", async () => {
+  const btn = $("btn-cupons-pendentes");
+  btn.disabled = true;
+  btn.textContent = "🎟️ tentando...";
+  try {
+    const r = await api("POST", "/api/cupons-pendentes/tentar");
+    const ok = r.criados.length, falha = r.falhas.length;
+    if (ok && !falha) toast(`${ok} cupom(ns) criado(s) ✓`, "ok");
+    else if (ok) toast(`${ok} criado(s) ✓ — ${falha} ainda pendente(s) (produto em análise?)`, "");
+    else toast(`Nenhum criado — ${falha} ainda recusado(s) pela Hotmart (produto em análise?)`, "erro");
+  } catch (e) { toast(e.message, "erro"); }
+  finally {
+    btn.disabled = false;
+    await atualizarCuponsPendentes();
+  }
+});
 
 $("btn-hist-atualizar").addEventListener("click", carregarHistorico);
 $("btn-hist-limpar").addEventListener("click", async () => {

@@ -1,5 +1,5 @@
 {
-  "version": 58,
+  "version": 59,
   "files": [
     "README.md",
     "app/__init__.py",
@@ -11,6 +11,7 @@
     "core/__init__.py",
     "core/agy.py",
     "core/config.py",
+    "core/cupons.py",
     "core/dialogo.py",
     "core/gmail_code.py",
     "core/historico.py",

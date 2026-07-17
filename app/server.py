@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import agy, config, dialogo, historico, hotmart_api, idiomas, produtos, robo, scanner, textos, titulos, updater
+from core import agy, config, cupons, dialogo, historico, hotmart_api, idiomas, produtos, robo, scanner, textos, titulos, updater
 
 PASTA_WEB = Path(__file__).resolve().parent / "web"
 
@@ -144,6 +144,20 @@ def hotmart_api_testar():
         return {"ok": True}
     except hotmart_api.HotmartApiError as e:
         return {"ok": False, "erro": str(e)}
+
+
+@app.get("/api/cupons-pendentes")
+def cupons_pendentes_listar():
+    return {"pendentes": cupons.listar(), "total": len(cupons.listar())}
+
+
+@app.post("/api/cupons-pendentes/tentar")
+def cupons_pendentes_tentar():
+    """Tenta criar todos os cupons pendentes agora (produtos já aprovados passam)."""
+    s = config.carregar_settings()
+    api = s.get("hotmart_api", {})
+    resultado = cupons.tentar_todos(api.get("client_id", ""), api.get("client_secret", ""))
+    return resultado
 
 
 @app.get("/api/idiomas")

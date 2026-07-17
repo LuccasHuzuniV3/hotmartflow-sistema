@@ -29,6 +29,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from core import cupons
 from core import produtos
 from core import gmail_code
 from core import historico
@@ -271,16 +272,30 @@ def _criar_cupom_pos_publicacao(job: Job, produto: dict, settings: dict) -> None
     """Cria o cupom de desconto no ebook PRINCIPAL recém-publicado (via API).
 
     Best-effort: qualquer falha vira aviso no painel — a publicação já foi
-    concluída e NUNCA é derrubada por causa do cupom."""
+    concluída e NUNCA é derrubada por causa do cupom. Se a Hotmart recusar
+    (ex.: produto ainda 'Em análise'), o cupom vai pra FILA DE PENDENTES e é
+    retentado a cada nova publicação e pelo botão na aba Histórico."""
     c = settings.get("cupom", {})
     if not c.get("ativo"):
         return
+    api = settings.get("hotmart_api", {})
+
+    # 1) retenta os cupons PENDENTES de publicações anteriores — o produto de
+    #    10 min atrás já pode ter sido aprovado pela Hotmart
+    try:
+        r = cupons.tentar_todos(api.get("client_id", ""), api.get("client_secret", ""))
+        for cr in r["criados"]:
+            job.log(f"Cupom pendente criado: '{cr['codigo']}' no produto "
+                    f"{cr['product_id']} ({cr.get('pais', '')}) ✔", "ok")
+    except Exception:
+        pass
+
+    # 2) cupom DESTE produto (só o Principal ganha cupom)
     if produto.get("tipo") != "Principal":
-        return  # cupom é SÓ pro ebook principal
+        return
     if not (job.hotmart_id or "").strip():
         job.log("Cupom: não capturei o ID do produto na Hotmart — crie na mão.", "aviso")
         return
-    api = settings.get("hotmart_api", {})
     try:
         hotmart_api.criar_cupom(
             product_id=job.hotmart_id,
@@ -292,7 +307,15 @@ def _criar_cupom_pos_publicacao(job: Job, produto: dict, settings: dict) -> None
         job.log(f"Cupom '{(c.get('codigo') or '').strip()}' ({c.get('desconto')}%) "
                 f"criado no produto {job.hotmart_id} ✔", "ok")
     except hotmart_api.HotmartApiError as e:
-        job.log(f"Cupom: {e} — o produto foi publicado normalmente.", "aviso")
+        try:
+            cupons.registrar(product_id=job.hotmart_id, codigo=c.get("codigo", ""),
+                             desconto_pct=float(c.get("desconto", 0) or 0),
+                             titulo=job.titulo, pais=job.pais, erro=str(e))
+            job.log(f"Cupom recusado agora ({str(e)[:120]}...) — guardei na fila de "
+                    "PENDENTES: retento sozinho nas próximas publicações (ou use o "
+                    "botão na aba Histórico).", "aviso")
+        except Exception:
+            job.log(f"Cupom: {e} — o produto foi publicado normalmente.", "aviso")
     except Exception as e:
         job.log(f"Cupom: falha inesperada ({str(e)[:150]}) — produto publicado normalmente.", "aviso")
 
