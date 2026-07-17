@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-URL_TOKEN = "https://api-sec-vcms.hotmart.com/security/oauth/token"
+URL_TOKEN = "https://api-sec-vlc.hotmart.com/security/oauth/token"
 URL_PRODUTOS = "https://developers.hotmart.com/products/api/v1"
 
 _cache_token = {"token": "", "expira_em": 0.0, "chave": ""}
@@ -60,7 +60,9 @@ def obter_token(client_id: str, client_secret: str) -> str:
         status, corpo = _http_post(url, {"Authorization": f"Basic {basic}",
                                          "Content-Type": "application/json"})
     except Exception as e:  # rede fora, DNS, timeout...
-        raise HotmartApiError(f"Não consegui falar com a API da Hotmart: {e}") from e
+        raise HotmartApiError(
+            f"Não consegui falar com o servidor de autenticação "
+            f"(api-sec-vlc.hotmart.com): {e}") from e
 
     try:
         dados = json.loads(corpo or "{}")
@@ -105,7 +107,9 @@ def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
         status, resp = _http_post(url, {"Authorization": f"Bearer {token}",
                                         "Content-Type": "application/json"}, corpo)
     except Exception as e:
-        raise HotmartApiError(f"Não consegui falar com a API da Hotmart: {e}") from e
+        raise HotmartApiError(
+            f"Não consegui falar com a API de produtos "
+            f"(developers.hotmart.com): {e}") from e
 
     if status not in (200, 201):
         raise HotmartApiError(

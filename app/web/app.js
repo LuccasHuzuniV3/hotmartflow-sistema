@@ -209,6 +209,36 @@ async function carregarConfig() {
   if (ultima && !$("scan-pasta").value) $("scan-pasta").value = ultima;
 }
 
+$("btn-testar-hapi").addEventListener("click", async () => {
+  const btn = $("btn-testar-hapi");
+  const fb = $("hapi-feedback");
+  btn.disabled = true;
+  fb.textContent = "testando...";
+  fb.style.color = "";
+  try {
+    // salva o que está nos campos antes (pra testar exatamente o que você colou)
+    await api("POST", "/api/settings", {
+      hotmart_api: {
+        client_id: $("cfg-hapi-id").value.trim(),
+        client_secret: $("cfg-hapi-secret").value.trim(),
+      },
+    });
+    const r = await api("POST", "/api/hotmart-api/testar");
+    if (r.ok) {
+      fb.textContent = "✓ Conectou — credenciais válidas";
+      fb.style.color = "var(--ok)";
+    } else {
+      fb.textContent = `✗ ${r.erro}`;
+      fb.style.color = "var(--erro)";
+    }
+  } catch (e) {
+    fb.textContent = `✗ ${e.message}`;
+    fb.style.color = "var(--erro)";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $("btn-salvar-config").addEventListener("click", async () => {
   const precos = {};
   document.querySelectorAll("[data-preco-tipo]").forEach((inp) => {
