@@ -14,7 +14,9 @@ import urllib.error
 import urllib.request
 
 URL_TOKEN = "https://api-sec-vlc.hotmart.com/security/oauth/token"
-URL_PRODUTOS = "https://developers.hotmart.com/products/api/v1"
+# ATENCAO: cupom fica no dominio PAYMENTS (a doc antiga dizia /products, mas o
+# POST la devolve 400 "internal_error" — os SDKs em producao usam /payments)
+URL_PAGAMENTOS = "https://developers.hotmart.com/payments/api/v1"
 
 _cache_token = {"token": "", "expira_em": 0.0, "chave": ""}
 
@@ -108,13 +110,13 @@ def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
 
     token = obter_token(client_id, client_secret)
     corpo = json.dumps({"code": codigo, "discount": desconto}).encode("utf-8")
-    url = f"{URL_PRODUTOS}/product/{product_id}/coupon"
+    url = f"{URL_PAGAMENTOS}/product/{product_id}/coupon"
     try:
         status, resp = _http_post(url, {"Authorization": f"Bearer {token}",
                                         "Content-Type": "application/json"}, corpo)
     except Exception as e:
         raise HotmartApiError(
-            f"Não consegui falar com a API de produtos "
+            f"Não consegui falar com a API de cupons "
             f"(developers.hotmart.com): {e}") from e
 
     if status not in (200, 201):
