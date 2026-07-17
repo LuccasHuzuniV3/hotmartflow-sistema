@@ -94,6 +94,12 @@ def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
         raise HotmartApiError("Código do cupom vazio — preencha na Config > Cupom.")
     if len(codigo) > 25:
         raise HotmartApiError("Código do cupom passa de 25 caracteres (limite da Hotmart).")
+    import re as _re
+    if not _re.fullmatch(r"[A-Za-z0-9_-]+", codigo):
+        raise HotmartApiError(
+            f"Código do cupom '{codigo}' tem caractere inválido — use só letras e "
+            "números, sem espaço nem acento (ex.: PROMO10)."
+        )
     desconto = round(float(desconto_pct) / 100.0, 4)
     if not (0 < desconto < 0.99):
         raise HotmartApiError("Desconto do cupom precisa estar entre 1% e 98%.")
@@ -113,7 +119,9 @@ def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
 
     if status not in (200, 201):
         raise HotmartApiError(
-            f"Hotmart recusou o cupom (HTTP {status}): {resp[:200]}"
+            f"Hotmart recusou o cupom (HTTP {status}) — enviado: code='{codigo}', "
+            f"discount={desconto} (={desconto_pct:g}%), produto={product_id}. "
+            f"Resposta: {resp[:200]}"
         )
     try:
         return json.loads(resp or "{}")
