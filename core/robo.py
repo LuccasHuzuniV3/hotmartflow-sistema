@@ -303,7 +303,6 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
             _executar_simulado(job)
         else:
             _executar_navegador(job, produto, item)
-        job.estado = "concluido"
         if job.modo == "real":
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "publicado"})
             job.log("Publicado com sucesso ✔", "ok")
@@ -328,6 +327,9 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
         else:
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "revisado"})
             job.log(f"Modo {job.modo} concluído — nada foi enviado de verdade.", "ok")
+        # 'concluido' SO no final — se vier antes, o painel para de atualizar e a
+        # mensagem do cupom (logada depois) nunca aparece pro operador
+        job.estado = "concluido"
     except CanceladoError:
         job.estado = "cancelado"
         produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "revisado"})
