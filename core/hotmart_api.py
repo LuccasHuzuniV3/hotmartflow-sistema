@@ -14,9 +14,13 @@ import urllib.error
 import urllib.request
 
 URL_TOKEN = "https://api-sec-vlc.hotmart.com/security/oauth/token"
-# ATENCAO: cupom fica no dominio PAYMENTS (a doc antiga dizia /products, mas o
-# POST la devolve 400 "internal_error" — os SDKs em producao usam /payments)
+# A API de cupom da Hotmart tem rotas em DOIS dominios (/payments e /products) e
+# ambos ja apresentaram comportamento errado (400 num, 200-fantasma que nao cria
+# nada no outro). Por isso o criar_cupom tenta um, VERIFICA por GET se o cupom
+# realmente existe, e se nao existir tenta o outro dominio — sucesso so quando o
+# cupom aparece de verdade na lista do produto.
 URL_PAGAMENTOS = "https://developers.hotmart.com/payments/api/v1"
+URL_PRODUTOS = "https://developers.hotmart.com/products/api/v1"
 
 _cache_token = {"token": "", "expira_em": 0.0, "chave": ""}
 
@@ -30,6 +34,20 @@ def _http_post(url: str, headers: dict, dados: bytes | None = None,
     """POST simples com urllib. Retorna (status, corpo) — HTTPError não estoura,
     vira (status_de_erro, corpo) pra tratarmos a mensagem da Hotmart."""
     req = urllib.request.Request(url, data=dados, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            corpo = e.read().decode("utf-8", "replace")
+        except Exception:
+            corpo = ""
+        return e.code, corpo
+
+
+def _http_get(url: str, headers: dict, timeout: float = 30) -> tuple[int, str]:
+    """GET simples com urllib — mesmo contrato do _http_post."""
+    req = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
@@ -84,9 +102,50 @@ def obter_token(client_id: str, client_secret: str) -> str:
     return token
 
 
+def listar_cupons(product_id: str, client_id: str, client_secret: str) -> list[dict]:
+    """Lista os cupons do produto (GET /coupon/product/{id}) — usado pra VERIFICAR
+    que o cupom criado existe de verdade. Tenta os dois domínios; devolve a
+    primeira lista não-vazia (ou vazia se nenhum tiver)."""
+    token = obter_token(client_id, client_secret)
+    headers = {"Authorization": f"Bearer {token}"}
+    itens: list[dict] = []
+    for base in (URL_PRODUTOS, URL_PAGAMENTOS):
+        try:
+            status, resp = _http_get(f"{base}/coupon/product/{product_id}", headers)
+        except Exception:
+            continue
+        if status != 200 or not (resp or "").strip():
+            continue  # 200 com corpo vazio = bug conhecido da API; tenta o outro
+        try:
+            dados = json.loads(resp)
+        except json.JSONDecodeError:
+            continue
+        achados = dados.get("items") or dados.get("lista") or []
+        if isinstance(achados, list) and achados:
+            return achados
+    return itens
+
+
+def _cupom_existe(product_id: str, codigo: str, client_id: str,
+                  client_secret: str, tentativas: int = 1) -> bool:
+    """Confere se o cupom aparece na lista do produto (case-insensitive).
+    Com tentativas=2 espera 2s entre elas — o cupom recém-criado pode demorar."""
+    alvo = codigo.strip().lower()
+    for tentativa in range(max(1, tentativas)):
+        for c in listar_cupons(product_id, client_id, client_secret):
+            code = str(c.get("code") or c.get("coupon_code") or "").strip().lower()
+            if code == alvo:
+                return True
+        if tentativa < tentativas - 1:
+            time.sleep(2)
+    return False
+
+
 def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
                 client_id: str, client_secret: str) -> dict:
-    """Cria um cupom no produto (POST /product/{id}/coupon).
+    """Cria um cupom no produto e SÓ retorna sucesso depois de VERIFICAR (por
+    GET) que ele existe de verdade — a API da Hotmart tem rota que responde 200
+    sem criar nada (sucesso fantasma). Tenta /payments e depois /products.
 
     desconto_pct em PORCENTO (ex.: 10 = 10%) — a API espera fração (0.10).
     Levanta HotmartApiError com mensagem legível em qualquer falha.
@@ -108,27 +167,31 @@ def criar_cupom(*, product_id: str, codigo: str, desconto_pct: float,
     if not str(product_id).strip():
         raise HotmartApiError("Sem o ID do produto na Hotmart — não dá pra criar o cupom.")
 
+    # já existe? (retentativa da fila de pendentes depois de um sucesso parcial)
+    if _cupom_existe(product_id, codigo, client_id, client_secret):
+        return {"verificado": True, "ja_existia": True}
+
     token = obter_token(client_id, client_secret)
     corpo = json.dumps({"code": codigo, "discount": desconto}).encode("utf-8")
-    url = f"{URL_PAGAMENTOS}/product/{product_id}/coupon"
-    try:
-        status, resp = _http_post(url, {"Authorization": f"Bearer {token}",
-                                        "Content-Type": "application/json"}, corpo)
-    except Exception as e:
-        raise HotmartApiError(
-            f"Não consegui falar com a API de cupons "
-            f"(developers.hotmart.com): {e}") from e
-
-    if status not in (200, 201):
-        raise HotmartApiError(
-            f"Hotmart recusou o cupom (HTTP {status}) — enviado: code='{codigo}', "
-            f"discount={desconto} (={desconto_pct:g}%), produto={product_id}. "
-            f"Resposta: {resp[:200]}"
-        )
-    try:
-        return json.loads(resp or "{}")
-    except json.JSONDecodeError:
-        return {}
+    respostas = []
+    for base in (URL_PAGAMENTOS, URL_PRODUTOS):
+        url = f"{base}/product/{product_id}/coupon"
+        try:
+            status, resp = _http_post(url, {"Authorization": f"Bearer {token}",
+                                            "Content-Type": "application/json"}, corpo)
+        except Exception as e:
+            respostas.append(f"{base.split('/')[3]}: erro de rede ({e})")
+            continue
+        respostas.append(f"{base.split('/')[3]}: HTTP {status} {resp[:120]}")
+        if status in (200, 201):
+            # nao confia no 200 — confere se o cupom REALMENTE existe
+            if _cupom_existe(product_id, codigo, client_id, client_secret, tentativas=2):
+                return {"verificado": True, "via": base}
+    raise HotmartApiError(
+        f"Cupom NÃO foi criado (nenhuma rota confirmou) — enviado: code='{codigo}', "
+        f"discount={desconto} (={desconto_pct:g}%), produto={product_id}. "
+        f"Tentativas: {' | '.join(respostas)}"
+    )
 
 
 def limpar_cache_token() -> None:
