@@ -96,6 +96,7 @@ function numeroTipoHist(tipo) {
 }
 
 async function carregarHistorico() {
+  carregarCheckouts();  // roda em paralelo — não bloqueia o histórico
   let r;
   try { r = await api("GET", "/api/historico"); } catch (e) { toast(e.message, "erro"); return; }
   $("hist-resumo").textContent = r.total
@@ -125,6 +126,39 @@ async function carregarHistorico() {
     return `<div class="hist-rede"><h3>${esc(rede)} <small>${totalRede} publicação(ões)</small></h3>${corpo}</div>`;
   }).join("");
 }
+
+async function carregarCheckouts() {
+  const bloco = $("ck-bloco");
+  let r;
+  try { r = await api("GET", "/api/checkouts"); } catch (_) { bloco.classList.add("oculto"); return; }
+  if (!r.total) { bloco.classList.add("oculto"); return; }
+  bloco.classList.remove("oculto");
+  const redes = Object.keys(r.arvore).sort();
+  $("ck-arvore").innerHTML = redes.map((rede) => {
+    const paises = r.arvore[rede];
+    const corpo = Object.keys(paises).sort().map((pais) =>
+      paises[pais].map((it) => `
+        <div class="hist-item">
+          <span class="chip tipo">${esc(pais)}</span>
+          <span class="h-tit">${esc(it.titulo)}</span>
+          <a class="ck-link" href="${esc(it.link)}" target="_blank">${esc(it.link)}</a>
+          <button class="btn mini" data-ck-link="${esc(it.link)}" title="Copiar o link">📋</button>
+          <span class="h-quando">${esc((it.quando || "").replace("T", " "))}</span>
+        </div>`).join("")
+    ).join("");
+    const total = Object.values(paises).reduce((a, arr) => a + arr.length, 0);
+    return `<div class="hist-rede"><h3>${esc(rede)} <small>${total} link(s)</small></h3>${corpo}</div>`;
+  }).join("");
+}
+
+$("ck-arvore").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-ck-link]");
+  if (!btn) return;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.ckLink);
+    toast("Link copiado 📋", "ok");
+  } catch (_) { toast("Não consegui copiar — copie manualmente.", "erro"); }
+});
 
 $("btn-hist-atualizar").addEventListener("click", carregarHistorico);
 $("btn-hist-limpar").addEventListener("click", async () => {
@@ -540,7 +574,10 @@ function renderLinhaIdioma(p, i) {
       <button class="btn mini" data-acao="revisado" data-pid="${p.id}" data-codigo="${i.codigo}">
         ${revisado ? "Desmarcar" : "Revisado ✓"}</button>
       ${revisado || i.status === "erro" ? `
-      <button class="btn mini primario" data-acao="publicar" data-pid="${p.id}" data-codigo="${i.codigo}">Publicar 🚀</button>` : ""}`}
+      <button class="btn mini primario" data-acao="publicar" data-pid="${p.id}" data-codigo="${i.codigo}">Publicar 🚀</button>` : ""}
+      ${i.status === "publicado" && p.tipo === "Principal" ? `
+      <button class="btn mini" data-acao="checkout" data-pid="${p.id}" data-codigo="${i.codigo}"
+        title="Monta a página de checkout (bumps + fundo preto + imagem + contagem) e salva o link">🛒 Checkout</button>` : ""}`}
     </td>
   </tr>`;
 }
@@ -566,6 +603,7 @@ $("lista-produtos").addEventListener("click", async (e) => {
     else if (acao === "revisado") await alternarRevisado(pid, codigo);
     else if (acao === "revisar-todos") await revisarTodos(pid);
     else if (acao === "publicar") await publicarIdioma(pid, codigo);
+    else if (acao === "checkout") await montarCheckout(pid, codigo);
     else if (acao === "escolher-capa") await escolherCapa(pid, codigo, btn);
     else if (acao === "detectar-capas") await detectarCapas(pid);
     else if (acao === "excluir") await excluirProduto(pid);
@@ -1040,6 +1078,15 @@ async function publicarIdioma(pid, codigo) {
     ? "Ensaio iniciado — o robô preenche a 1ª tela e para."
     : "Publicação iniciada 🚀", "ok");
   await recarregarProduto(pid);
+  iniciarPollPublicacao();
+}
+
+async function montarCheckout(pid, codigo) {
+  if (!confirm("Montar a página de CHECKOUT desse produto na Hotmart?\n\n"
+    + "O robô cria a página (bumps + fundo preto + imagem do país + contagem), "
+    + "publica e salva o link na aba Histórico.")) return;
+  await api("POST", `/api/produtos/${pid}/checkout/${codigo}`);
+  toast("Montagem do checkout iniciada 🛒", "ok");
   iniciarPollPublicacao();
 }
 

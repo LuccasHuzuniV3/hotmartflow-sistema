@@ -17,6 +17,8 @@ URL_PRODUTOS = f"{URL_APP}/products"
 # URL direta do formulario "Informacoes basicas" de um eBook novo (formato 4).
 # Cai direto na tela de preencher — pula "Criar produto > eBook > Continuar".
 URL_CRIAR_EBOOK = f"{URL_APP}/products/add/4/info"
+# Builder das paginas de checkout (aparencia da pagina de pagamento)
+URL_CUSTOM_CHECKOUT = "https://custom-checkout.hotmart.com/"
 
 # Se a URL cair em algum desses pedacos, o usuario NAO esta logado
 MARCADORES_LOGIN = ("sso.hotmart.com", "/login", "signin")
@@ -41,6 +43,39 @@ IDIOMA_FALLBACK = "English"  # idiomas que a Hotmart nao tem -> ingles
 def idioma_hotmart(codigo: str) -> str:
     """Nome do idioma no dropdown da Hotmart; 'English' se nao existir lá."""
     return IDIOMA_HOTMART.get(codigo, IDIOMA_FALLBACK)
+
+
+# "Últimas cópias disponíveis" na lingua de cada pais — texto fixo da Contagem
+# Regressiva do checkout. Tabela embutida: zero custo de agy, deterministico.
+TEXTO_CONTAGEM = {
+    "pt-br": "Últimas cópias disponíveis",
+    "en":    "Last copies available",
+    "es":    "Últimas copias disponibles",
+    "fr":    "Dernières copies disponibles",
+    "de":    "Letzte verfügbare Exemplare",
+    "it":    "Ultime copie disponibili",
+    "nl":    "Laatste exemplaren beschikbaar",
+    "sv":    "Sista exemplaren tillgängliga",
+    "fi":    "Viimeiset kappaleet saatavilla",
+    "pl":    "Ostatnie dostępne egzemplarze",
+    "cs":    "Poslední dostupné kopie",
+    "sk":    "Posledné dostupné kópie",
+    "sl":    "Zadnji razpoložljivi izvodi",
+    "hu":    "Utolsó elérhető példányok",
+    "ro":    "Ultimele exemplare disponibile",
+    "bg":    "Последни налични копия",
+    "hr":    "Posljednji dostupni primjerci",
+    "sr":    "Poslednji dostupni primerci",
+    "el":    "Τελευταία διαθέσιμα αντίτυπα",
+    "fil":   "Mga huling kopya na available",
+    "ru":    "Последние доступные экземпляры",
+    "ko":    "마지막 남은 수량",
+}
+
+
+def texto_contagem(codigo: str) -> str:
+    """Texto da contagem regressiva na lingua do pais (ingles se nao tiver)."""
+    return TEXTO_CONTAGEM.get(codigo, TEXTO_CONTAGEM["en"])
 
 # Nome do pais como aparece em "Principal pais para vendas"
 PAIS_HOTMART = {
@@ -302,5 +337,74 @@ MAPA = {
         {"tipo": "role", "role": "button", "nome": "^Criar$"},
         {"tipo": "role", "role": "button", "nome": "^Confirmar$"},
         {"tipo": "role", "role": "button", "nome": "Criar cupom"},
+    ],
+
+    # ---------- checkout builder (custom-checkout.hotmart.com) ----------
+    # seletores calibrados com os prints do inspetor (usuario)
+    "ck_busca": [                       # busca da home E do modal do order bump
+        {"tipo": "css", "css": "input.search-input"},
+        {"tipo": "placeholder", "texto": "Busque pelo nome"},
+    ],
+    "ck_btn_criar_pagina": [
+        {"tipo": "role", "role": "button", "nome": "Criar nova página"},
+        {"tipo": "texto", "texto": "Criar nova página"},
+    ],
+    "ck_btn_escolher_produto": [
+        {"tipo": "role", "role": "button", "nome": "Escolher produto"},
+    ],
+    "ck_radio_preco_base": [
+        {"tipo": "css", "css": "input[id^='option-']"},
+        {"tipo": "label", "texto": "Preço base"},
+    ],
+    "ck_btn_selecionar": [
+        {"tipo": "role", "role": "button", "nome": "^Selecionar$"},
+    ],
+    "ck_campo_preco_de": [              # money-input direita->esquerda (US$ 0,00)
+        {"tipo": "css", "css": "input.form-order-bump__input"},
+    ],
+    "ck_campo_descricao": [
+        {"tipo": "css", "css": "textarea.form-order-bump__input"},
+        {"tipo": "placeholder", "texto": "características do produto"},
+    ],
+    "ck_btn_inserir": [
+        {"tipo": "role", "role": "button", "nome": "^Inserir$"},
+    ],
+    "ck_btn_color_trigger": [
+        {"tipo": "css", "css": "button.color-picker-trigger"},
+    ],
+    "ck_campo_color_hex": [             # id tem sufixo dinamico (colorPickerInput850)
+        {"tipo": "css", "css": "input[id^='colorPickerInput']"},
+    ],
+    "ck_btn_aplicar": [
+        {"tipo": "role", "role": "button", "nome": "^Aplicar$"},
+    ],
+    "ck_input_imagem": [
+        {"tipo": "css", "css": "input[type='file']"},
+    ],
+    "ck_slot_vazio": [                  # coluna vazia no topo (alvo do drag)
+        {"tipo": "css", "css": "div.builder-column-empty-message"},
+    ],
+    "ck_campo_countdown_ativo": [
+        {"tipo": "css", "css": "textarea#countdown-text"},
+    ],
+    "ck_campo_countdown_zerado": [
+        {"tipo": "css", "css": "textarea#countdown-over-text"},
+    ],
+    "ck_btn_visao_celular": [           # botao-icone sem nome (rounded-pill)
+        {"tipo": "css", "css": "button.hot-button._rounded-pill"},
+    ],
+    "ck_btn_copiar_celular": [
+        {"tipo": "role", "role": "button", "nome": "Copiar celular"},
+    ],
+    "ck_btn_salvar_pagina": [
+        {"tipo": "role", "role": "button", "nome": "Salvar nova Página"},
+        {"tipo": "role", "role": "button", "nome": "Salvar Página"},
+    ],
+    "ck_btn_publicar_pagina": [
+        {"tipo": "role", "role": "button", "nome": "Publicar página"},
+    ],
+    "ck_btn_atualizar_publicacao": [
+        {"tipo": "css", "css": "button#publishFormSubmitButton"},
+        {"tipo": "role", "role": "button", "nome": "Atualizar publicação"},
     ],
 }

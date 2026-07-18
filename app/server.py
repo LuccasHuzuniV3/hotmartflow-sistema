@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import agy, config, dialogo, historico, idiomas, produtos, robo, scanner, textos, titulos, updater
+from core import agy, checkouts, config, dialogo, historico, idiomas, produtos, robo, scanner, textos, titulos, updater
 
 PASTA_WEB = Path(__file__).resolve().parent / "web"
 
@@ -406,6 +406,21 @@ def publicar(produto_id: str, codigo: str, body: PublicarIn):
     except (robo.RoboError, produtos.ProdutoError) as e:
         _erro(str(e))
     return job.snapshot()
+
+
+@app.post("/api/produtos/{produto_id}/checkout/{codigo}")
+def montar_checkout(produto_id: str, codigo: str):
+    """Monta a página de checkout do Principal publicado (robô clicando)."""
+    try:
+        job = robo.iniciar(produto_id, codigo, "checkout")
+    except (robo.RoboError, produtos.ProdutoError) as e:
+        _erro(str(e))
+    return job.snapshot()
+
+
+@app.get("/api/checkouts")
+def checkouts_listar():
+    return {"arvore": checkouts.agrupado(), "total": len(checkouts.listar())}
 
 
 @app.get("/api/publicacao")

@@ -29,6 +29,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from core import checkouts
 from core import produtos
 from core import gmail_code
 from core import historico
@@ -55,7 +56,9 @@ def _url_cdp() -> str:
     return f"http://127.0.0.1:{_porta_cdp()}"
 
 ESTADOS_ATIVOS = ("iniciando", "rodando", "aguardando_2fa", "aguardando_confirmacao")
-MODOS = ("real", "ensaio", "simulado")
+# "checkout" = monta a pagina de checkout (custom-checkout.hotmart.com) de um
+# Principal JA PUBLICADO — nao mexe no status do produto na fila.
+MODOS = ("real", "ensaio", "simulado", "checkout")
 
 # Delay entre etapas do modo simulado (env pra acelerar nos testes)
 _DELAY_SIMULADO = float(os.environ.get("HOTMARTFLOW_SIM_DELAY", "0.8"))
@@ -84,6 +87,7 @@ class Job:
         self.pais = item["pais"]
         self.modo = modo
         self.hotmart_id = ""  # ID do produto na Hotmart (capturado da URL)
+        self.link_checkout = ""  # link pay.hotmart.com capturado no modo checkout
         self.estado = "iniciando"
         self.etapa = ""
         self.mensagens: list[dict] = []
@@ -119,6 +123,7 @@ class Job:
             "etapa": self.etapa,
             "mensagens": self.mensagens[-40:],
             "iniciado_em": self.iniciado_em,
+            "link_checkout": self.link_checkout,
         }
 
     # ---- pausas humanas --------------------------------------------------
@@ -241,12 +246,25 @@ def iniciar(produto_id: str, codigo_idioma: str, modo: str) -> Job:
         job = Job(produto, item, modo)
         _JOB = job
 
-    produtos.atualizar_item(produto_id, codigo_idioma, {"status": "publicando", "erro": ""})
+    if modo != "checkout":  # checkout NAO altera o status (produto ja publicado)
+        produtos.atualizar_item(produto_id, codigo_idioma, {"status": "publicando", "erro": ""})
     threading.Thread(target=_rodar, args=(job, produto, item), daemon=True).start()
     return job
 
 
 def _validar_item(produto: dict, item: dict, modo: str) -> None:
+    if modo == "checkout":
+        # monta a pagina de checkout: exige Principal JA publicado
+        if produto.get("tipo") != "Principal":
+            raise RoboError("Checkout é montado só no ebook PRINCIPAL.")
+        if item["status"] != "publicado":
+            raise RoboError(
+                f"{item['pais']}: publique o produto primeiro — o checkout precisa "
+                f"do produto existindo na Hotmart (está '{item['status']}')."
+            )
+        if not (item["titulo"] or "").strip():
+            raise RoboError(f"{item['pais']}: sem título traduzido.")
+        return
     if item["status"] == "publicado":
         raise RoboError(f"{item['pais']}: já está publicado.")
     if item["status"] != "revisado":
@@ -266,7 +284,80 @@ def _validar_item(produto: dict, item: dict, modo: str) -> None:
             raise RoboError(f"{item['pais']}: anexo '{anexo.get('nome')}' sem PDF em {anexo.get('pdf')!r}.")
 
 
+def _bumps_do_checkout(produto: dict, codigo: str) -> list[dict]:
+    """Order Bumps da MESMA rede (pasta) no idioma do checkout, em ordem de
+    número — só os PUBLICADOS (precisam existir na Hotmart pra entrar no bump).
+    Retorna [{numero, titulo, descricao(≤500)}]."""
+    pasta = str(produto.get("pasta", ""))
+    bumps: list[dict] = []
+    for p in produtos.listar():
+        if p.get("tipo") != "Order Bump" or str(p.get("pasta", "")) != pasta:
+            continue
+        it = next((i for i in p["idiomas"] if i["codigo"] == codigo), None)
+        if not it or it.get("status") != "publicado":
+            continue
+        if not (it.get("titulo") or "").strip():
+            continue
+        bumps.append({
+            "numero": p.get("numero") or 0,
+            "titulo": it["titulo"].strip(),
+            "descricao": (it.get("descricao") or "").strip()[:500],  # limite da Hotmart
+        })
+    bumps.sort(key=lambda b: b["numero"])
+    return bumps
+
+
+def _imagem_checkout(pasta_rede: str, codigo: str) -> str | None:
+    """Imagem do checkout do país: dentro da subpasta com 'checkout' no nome
+    (ZPAG DE CHECKOUT etc.), o arquivo cujo nome é o país (ALEMANHA, BRASIL,
+    INGLES...) — casado com a mesma tolerância de nomes do scanner."""
+    from core import idiomas as _idiomas
+    base = Path(pasta_rede or "")
+    if not base.is_dir():
+        return None
+    exts = (".jpg", ".jpeg", ".png", ".webp")
+    for sub in sorted(base.iterdir()):
+        if not sub.is_dir() or "checkout" not in _idiomas.normalizar(sub.name):
+            continue
+        for arq in sorted(sub.iterdir()):
+            if not arq.is_file() or arq.suffix.lower() not in exts:
+                continue
+            info = _idiomas.por_pais(arq.stem.strip())
+            if info and info["codigo"] == codigo:
+                return str(arq)
+    return None
+
+
+def _rodar_checkout(job: Job, produto: dict, item: dict) -> None:
+    """Monta a página de checkout de um Principal publicado. NUNCA mexe no
+    status do produto na fila (ele continua 'publicado')."""
+    try:
+        _executar_checkout(job, produto, item)
+        if job.link_checkout:
+            try:
+                rede = Path(produto.get("pasta", "")).name or produto.get("pasta", "")
+                checkouts.registrar(rede=rede, pais=item["pais"],
+                                    titulo=item["titulo"] or produto["titulo_pt"],
+                                    link=job.link_checkout)
+            except Exception:
+                pass  # registro nunca derruba o resultado
+            job.log(f"Link salvo no histórico de checkouts ✔ {job.link_checkout}", "ok")
+        else:
+            job.log("Página publicada, mas NÃO capturei o link — copie na mão na tela "
+                    "de sucesso e confira o print.", "aviso")
+        job.estado = "concluido"
+    except CanceladoError:
+        job.estado = "cancelado"
+        job.log("Montagem do checkout cancelada.", "aviso")
+    except Exception as e:
+        job.estado = "erro"
+        job.log(f"ERRO: {str(e)[:400]}", "erro")
+
+
 def _rodar(job: Job, produto: dict, item: dict) -> None:
+    if job.modo == "checkout":
+        _rodar_checkout(job, produto, item)
+        return
     try:
         if job.modo == "simulado":
             _executar_simulado(job)
@@ -402,13 +493,16 @@ class Tela:
     def clicar(self, chave: str, timeout: int = 4000) -> None:
         self._localizar(chave, timeout=timeout).click()
 
-    def preencher(self, chave: str, valor: str) -> None:
+    def preencher(self, chave: str, valor: str, delay: int | None = None) -> None:
         """Digita LETRA POR LETRA com delay — a Hotmart reseta o form se o
         preenchimento for instantaneo (fill). press_sequentially simula humano.
 
         CRITICO: texto longo (descricao de 500+ chars) leva mais que o timeout
         padrao de 20s pra digitar. Calculamos um timeout proporcional ao tamanho
-        (senao estoura no meio da digitacao)."""
+        (senao estoura no meio da digitacao).
+
+        delay: override do ms/tecla (ex.: checkout builder nao tem anti-bot,
+        entao textos longos podem ir mais rapido)."""
         campo = self._localizar(chave)
         campo.click()
         self.page.wait_for_timeout(300)
@@ -416,12 +510,13 @@ class Tela:
             campo.fill("")  # limpa o que tiver
         except Exception:
             pass
+        d = self.delay_digitacao if delay is None else max(0, int(delay))
         # tempo total = n_chars * delay + folga generosa
-        tmo = max(30000, len(valor) * self.delay_digitacao + 20000)
+        tmo = max(30000, len(valor) * d + 20000)
         try:
-            campo.press_sequentially(valor, delay=self.delay_digitacao, timeout=tmo)
+            campo.press_sequentially(valor, delay=d, timeout=tmo)
         except Exception:
-            campo.type(valor, delay=self.delay_digitacao, timeout=tmo)  # fallback API antiga
+            campo.type(valor, delay=d, timeout=tmo)  # fallback API antiga
         self.page.wait_for_timeout(250)
 
     def escolher_opcao(self, chave_campo: str, texto_opcao: str) -> None:
@@ -554,9 +649,12 @@ class Tela:
         self.page.wait_for_timeout(600)
         self.job.log(f"Club escolhido: {menor} produtos (com espaço).")
 
-    def clicar_por_texto(self, texto: str, timeout: int = 15000) -> None:
-        """Clica num botao/chip que tenha exatamente esse texto (ex.: categoria
+    def clicar_por_texto(self, texto: str, timeout: int = 15000,
+                         exato: bool = True) -> None:
+        """Clica num botao/chip que tenha esse texto (ex.: categoria
         'Espiritualidade' ou 'Modelo de parceria de negócio' na coprodução).
+        exato=False casa por CONTÉM — pra clicar no resultado da busca do
+        checkout, cujo card tem o título no meio de mais texto.
 
         POLLING rápido: em vez de esperar 900ms bloqueando em CADA candidato (o
         que explodia pra dezenas de segundos varrendo os iframes — 43s num clique
@@ -564,12 +662,15 @@ class Tela:
         o elemento aparece. Mesma busca (página + iframes, 4 formas), sem o
         desperdício de esperar cada candidato falhar."""
         import re
-        alvo = re.compile(rf"^\s*{re.escape(texto)}\s*$", re.I)
+        if exato:
+            alvo = re.compile(rf"^\s*{re.escape(texto)}\s*$", re.I)
+        else:
+            alvo = re.compile(re.escape(texto), re.I)
 
         def fabricas(ctx):
             return [
-                ctx.get_by_role("button", name=texto, exact=True),
-                ctx.get_by_role("radio", name=texto, exact=True),
+                ctx.get_by_role("button", name=alvo),
+                ctx.get_by_role("radio", name=alvo),
                 ctx.locator("button, label").filter(has_text=alvo),
                 ctx.get_by_text(alvo),
             ]
@@ -761,6 +862,28 @@ class Tela:
                 f"Salvei mas o cupom '{codigo}' não apareceu na lista — "
                 "confira o print em data/publicacoes."
             )
+
+    def capturar_link_pagamento(self, timeout: float = 15000) -> str:
+        """Lê o link https://pay.hotmart.com/... do input da tela de sucesso do
+        checkout ('Sua página foi publicada com sucesso!') — direto do value,
+        sem depender do botão 'Copiar link' nem da área de transferência."""
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for ctx in self._contextos():
+                try:
+                    inputs = ctx.locator("input")
+                    for i in range(min(inputs.count(), 40)):
+                        try:
+                            v = (inputs.nth(i).input_value() or "").strip()
+                        except Exception:
+                            continue
+                        if v.startswith("https://pay.hotmart.com"):
+                            return v
+                except Exception:
+                    continue
+            if time.time() >= fim:
+                return ""
+            self.page.wait_for_timeout(500)
 
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         """Procura o texto na página E nos iframes, tentando ate 'timeout'."""
@@ -1178,6 +1301,175 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             # O Chrome foi aberto por nos (subprocess), fora do Playwright; ao sair
             # do 'with sync_playwright' so o controle CDP e desconectado.
             pass
+
+
+# ---------------------------------------------------------------------------
+# Executor de CHECKOUT (custom-checkout.hotmart.com) — monta a pagina de
+# pagamento de um Principal publicado e captura o link pay.hotmart.com
+# ---------------------------------------------------------------------------
+def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
+    from playwright.sync_api import sync_playwright
+
+    from core import config as cfg
+    s = cfg.carregar_settings()
+
+    pasta_shots = PASTA_PUBLICACOES / job.produto_id / f"checkout_{item['codigo']}"
+    pasta_shots.mkdir(parents=True, exist_ok=True)
+
+    bumps = _bumps_do_checkout(produto, item["codigo"])
+    imagem = _imagem_checkout(produto.get("pasta", ""), item["codigo"])
+    texto_cont = hm.texto_contagem(item["codigo"])
+    # no builder nao tem o anti-bot do cadastro — digitacao rapida (descricoes longas)
+    DELAY_CK = 8
+
+    job.estado = "rodando"
+    with sync_playwright() as p:
+        browser, page = _conectar(p)
+        try:
+            page.set_default_timeout(20000)
+            tela = Tela(page, job, pasta_shots,
+                        delay_digitacao=int(s.get("robo", {}).get("delay_digitacao_ms", _DELAY_DIGITACAO)))
+
+            # ---- 1. abrir o builder e achar o produto -----------------------
+            job.marcar_etapa("ck_abrir", f"Abrindo o builder de checkout ({item['pais']})...")
+            page.goto(hm.URL_CUSTOM_CHECKOUT, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
+            if any(m in page.url for m in hm.MARCADORES_LOGIN):
+                tela.shot("ck_erro_login")
+                raise RoboError("Caiu na tela de login — entre na Hotmart na janela do robô e tente de novo.")
+            tela.preencher("ck_busca", item["titulo"], delay=DELAY_CK)
+            page.wait_for_timeout(2000)
+            # clica no card do produto (o titulo aparece no resultado da busca)
+            tela.clicar_por_texto(item["titulo"][:60], exato=False)
+            page.wait_for_timeout(2000)
+            tela.shot("ck_produto")
+
+            # ---- 2. nova pagina em branco -----------------------------------
+            job.marcar_etapa("ck_nova_pagina", "Criando nova página (Em Branco)...")
+            tela.clicar("ck_btn_criar_pagina", timeout=10000)
+            page.wait_for_timeout(1500)
+            tela.clicar_por_texto("Em Branco")
+            page.wait_for_timeout(2500)
+            tela.shot("ck_editor")
+
+            # ---- 3. order bumps (um componente por bump) --------------------
+            for n_b, bump in enumerate(bumps, 1):
+                job.marcar_etapa("ck_bump",
+                                 f"Order Bump {n_b}/{len(bumps)}: {bump['titulo'][:45]}...")
+                tela.clicar_por_texto("Order Bump")
+                page.wait_for_timeout(800)
+                tela.clicar("ck_btn_escolher_produto", timeout=10000)
+                page.wait_for_timeout(800)
+                tela.preencher("ck_busca", bump["titulo"], delay=DELAY_CK)
+                page.wait_for_timeout(1500)
+                tela.clicar("ck_radio_preco_base", timeout=10000)  # oferta "Preço base"
+                tela.clicar("ck_btn_selecionar", timeout=8000)
+                page.wait_for_timeout(800)
+                # preco "de" fixo 89,90 — money-input direita->esquerda: "8990"
+                tela.preencher("ck_campo_preco_de", "8990")
+                tela.preencher("ck_campo_descricao", bump["descricao"], delay=DELAY_CK)
+                tela.shot(f"ck_bump_{n_b}")
+                tela.clicar("ck_btn_inserir", timeout=8000)
+                page.wait_for_timeout(1200)
+            if not bumps:
+                job.log("Nenhum Order Bump publicado nesse idioma — página sai sem bumps.", "aviso")
+
+            # ---- 4. fundo preto ---------------------------------------------
+            job.marcar_etapa("ck_background", "Background: cor de fundo preta (#000000)...")
+            tela.clicar_por_texto("Background")
+            page.wait_for_timeout(800)
+            tela.clicar("ck_btn_color_trigger", timeout=8000)
+            page.wait_for_timeout(500)
+            tela.preencher("ck_campo_color_hex", "#000000", delay=DELAY_CK)
+            tela.clicar("ck_btn_aplicar", timeout=8000)   # Aplicar do picker
+            page.wait_for_timeout(500)
+            try:
+                tela.clicar("ck_btn_aplicar", timeout=4000)  # Aplicar do painel (obrigatorio)
+            except RoboError:
+                pass  # alguns fluxos fecham tudo no 1o Aplicar
+            page.wait_for_timeout(800)
+            tela.shot("ck_fundo")
+
+            # ---- 5. imagem do pais (pasta ZPAG DE CHECKOUT) -----------------
+            if imagem:
+                job.marcar_etapa("ck_imagem", f"Imagem do checkout: {Path(imagem).name}...")
+                tela.clicar_por_texto("Imagem")
+                page.wait_for_timeout(800)
+                tela._localizar("ck_input_imagem", timeout=8000).set_input_files(imagem)
+                page.wait_for_timeout(2000)
+                tela.clicar("ck_btn_aplicar", timeout=10000)   # modal "Cortar imagem"
+                page.wait_for_timeout(1000)
+                tela.clicar("ck_btn_inserir", timeout=8000)
+                page.wait_for_timeout(1200)
+                # arrastar a imagem pro slot vazio do topo (best-effort)
+                try:
+                    alvo = tela._localizar("ck_slot_vazio", timeout=5000)
+                    origem = None
+                    for ctx in tela._contextos():
+                        try:
+                            cand = ctx.locator("img").last
+                            if cand.is_visible():
+                                origem = cand
+                                break
+                        except Exception:
+                            continue
+                    if origem is None:
+                        raise RoboError("não achei a imagem inserida")
+                    origem.drag_to(alvo, timeout=8000)
+                    page.wait_for_timeout(1000)
+                    tela.shot("ck_imagem_posicionada")
+                except Exception as e:
+                    tela.shot("ck_erro_drag")
+                    job.log(f"Não consegui arrastar a imagem pro topo ({str(e)[:100]}) — "
+                            "arruma na mão; me manda o print do bloco da imagem que eu "
+                            "calibro o arrasto.", "aviso")
+            else:
+                job.log(f"Sem imagem de checkout pra {item['pais']} na pasta da rede "
+                        "(procurei subpasta com 'checkout' no nome) — página sai sem imagem.", "aviso")
+
+            # ---- 6. contagem regressiva -------------------------------------
+            job.marcar_etapa("ck_contagem", f"Contagem regressiva: \"{texto_cont}\"...")
+            tela.clicar_por_texto("Contagem Regressiva")
+            page.wait_for_timeout(800)
+            tela.preencher("ck_campo_countdown_ativo", texto_cont, delay=DELAY_CK)
+            tela.preencher("ck_campo_countdown_zerado", texto_cont, delay=DELAY_CK)
+            tela.clicar("ck_btn_inserir", timeout=8000)
+            page.wait_for_timeout(1200)
+            tela.shot("ck_contagem")
+
+            # ---- 7. copiar pro celular + salvar + publicar ------------------
+            job.marcar_etapa("ck_publicar", "Copiando pro celular, salvando e publicando...")
+            try:
+                tela.clicar("ck_btn_visao_celular", timeout=5000)
+                page.wait_for_timeout(1000)
+            except RoboError:
+                job.log("Botão da visão celular não achado — seguindo direto pro Copiar celular.", "aviso")
+            tela.clicar("ck_btn_copiar_celular", timeout=8000)
+            page.wait_for_timeout(1200)
+            tela.clicar("ck_btn_salvar_pagina", timeout=10000)
+            page.wait_for_timeout(2000)
+            tela.clicar("ck_btn_publicar_pagina", timeout=10000)
+            page.wait_for_timeout(1500)
+            tela.clicar("ck_btn_atualizar_publicacao", timeout=10000)
+            page.wait_for_timeout(2000)
+            tela.shot("ck_publicado")
+
+            # ---- 8. capturar o LINK (input da tela de sucesso) --------------
+            link = tela.capturar_link_pagamento(timeout=15000)
+            if link:
+                job.link_checkout = link
+                job.log(f"Link do checkout capturado: {link}", "ok")
+            tela.shot("ck_final")
+
+            resumo = job.resumo_tempos()
+            if resumo:
+                job.log(resumo, "ok")
+                try:
+                    (pasta_shots / "tempos.txt").write_text(resumo, encoding="utf-8")
+                except OSError:
+                    pass
+        finally:
+            pass  # janela fica aberta (mesma regra do publicador)
 
 
 # ---------------------------------------------------------------------------
