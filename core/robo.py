@@ -1303,6 +1303,61 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             pass
 
 
+def _arrastar_imagem_topo(tela: Tela, page) -> None:
+    """Arrasta a seção da imagem (inserida no FIM da página) pro componente do
+    TOPO do canvas — com movimento de mouse REAL e gradual (builders ignoram
+    'teleporte' de drag).
+
+    A imagem certa é a ÚLTIMA do CANVAS: filtra x > 300 pra NÃO agarrar a
+    miniatura do painel lateral (foi o erro da 1ª versão)."""
+    caixas = []
+    for ctx in tela._contextos():
+        try:
+            imgs = ctx.locator("img")
+            for i in range(min(imgs.count(), 80)):
+                el = imgs.nth(i)
+                try:
+                    if not el.is_visible():
+                        continue
+                    box = el.bounding_box()
+                except Exception:
+                    continue
+                if not box or box["x"] < 300 or box["width"] < 80:
+                    continue  # painel lateral / iconezinhos
+                caixas.append(box)
+        except Exception:
+            continue
+    if not caixas:
+        raise RoboError("não achei a imagem inserida no canvas")
+    origem = caixas[-1]  # a inserida por último (fim da página)
+    # alvo: slot vazio do topo se existir; senão o elemento mais alto do canvas
+    alvo = None
+    try:
+        el = tela._localizar("ck_slot_vazio", timeout=2000)
+        alvo = el.bounding_box()
+    except Exception:
+        pass
+    if alvo is None:
+        alvo = min(caixas, key=lambda b: b["y"])
+    if abs(alvo["y"] - origem["y"]) < 40:
+        return  # já está no topo
+    sx = origem["x"] + origem["width"] / 2
+    sy = origem["y"] + origem["height"] / 2
+    tx = alvo["x"] + alvo["width"] / 2
+    ty = alvo["y"] + 25   # borda de cima do alvo (soltar ACIMA do componente)
+    page.mouse.move(sx, sy)
+    page.wait_for_timeout(300)
+    page.mouse.down()
+    page.wait_for_timeout(300)
+    passos = 12
+    for n in range(1, passos + 1):
+        page.mouse.move(sx + (tx - sx) * n / passos, sy + (ty - sy) * n / passos)
+        page.wait_for_timeout(60)
+    page.wait_for_timeout(500)   # deixa o builder acender a zona de drop
+    page.mouse.up()
+    page.wait_for_timeout(1000)
+
+
 # ---------------------------------------------------------------------------
 # Executor de CHECKOUT (custom-checkout.hotmart.com) — monta a pagina de
 # pagamento de um Principal publicado e captura o link pay.hotmart.com
@@ -1388,12 +1443,13 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             tela.clicar("ck_btn_color_trigger", timeout=8000)
             page.wait_for_timeout(500)
             tela.preencher("ck_campo_color_hex", "#000000", delay=DELAY_CK)
-            tela.clicar("ck_btn_aplicar", timeout=8000)   # Aplicar do picker
-            page.wait_for_timeout(500)
-            try:
-                tela.clicar("ck_btn_aplicar", timeout=4000)  # Aplicar do painel (obrigatorio)
-            except RoboError:
-                pass  # alguns fluxos fecham tudo no 1o Aplicar
+            # a cor SO vale com os DOIS Aplicar (do picker E do painel) — clica
+            # enquanto houver "Aplicar" visivel na tela (ate 3x, com pausa)
+            for _ in range(3):
+                if not tela._elemento_visivel("ck_btn_aplicar", timeout=1500):
+                    break
+                tela.clicar("ck_btn_aplicar", timeout=5000)
+                page.wait_for_timeout(900)
             page.wait_for_timeout(800)
             tela.shot("ck_fundo")
 
@@ -1407,23 +1463,11 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
                 tela.clicar("ck_btn_aplicar", timeout=10000)   # modal "Cortar imagem"
                 page.wait_for_timeout(1000)
                 tela.clicar("ck_btn_inserir", timeout=8000)
-                page.wait_for_timeout(1200)
-                # arrastar a imagem pro slot vazio do topo (best-effort)
+                page.wait_for_timeout(1500)
+                # arrasta a secao da imagem (inserida no FIM) pro componente do
+                # TOPO — mouse real em passos (best-effort, nunca derruba)
                 try:
-                    alvo = tela._localizar("ck_slot_vazio", timeout=5000)
-                    origem = None
-                    for ctx in tela._contextos():
-                        try:
-                            cand = ctx.locator("img").last
-                            if cand.is_visible():
-                                origem = cand
-                                break
-                        except Exception:
-                            continue
-                    if origem is None:
-                        raise RoboError("não achei a imagem inserida")
-                    origem.drag_to(alvo, timeout=8000)
-                    page.wait_for_timeout(1000)
+                    _arrastar_imagem_topo(tela, page)
                     tela.shot("ck_imagem_posicionada")
                 except Exception as e:
                     tela.shot("ck_erro_drag")

@@ -393,7 +393,9 @@ MAPA = {
     "ck_campo_countdown_zerado": [
         {"tipo": "css", "css": "textarea#countdown-over-text"},
     ],
-    "ck_btn_visao_celular": [           # botao-icone sem nome (rounded-pill)
+    "ck_btn_visao_celular": [           # toggle "Celular | Monitor" do topo
+        {"tipo": "role", "role": "button", "nome": "^Celular$"},
+        {"tipo": "texto", "texto": "^Celular$"},
         {"tipo": "css", "css": "button.hot-button._rounded-pill"},
     ],
     "ck_btn_copiar_celular": [
