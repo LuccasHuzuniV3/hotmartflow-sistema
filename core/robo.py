@@ -1485,13 +1485,15 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             page.wait_for_timeout(1200)
             tela.shot("ck_contagem")
 
-            # ---- 7. copiar pro celular + salvar + publicar ------------------
-            job.marcar_etapa("ck_publicar", "Copiando pro celular, salvando e publicando...")
+            # ---- 7. visao Monitor + copiar do celular + salvar + publicar ----
+            # a montagem toda foi feita na visao CELULAR (padrao do builder);
+            # troca pra Monitor e usa "Copiar celular" pro desktop ficar igual
+            job.marcar_etapa("ck_publicar", "Visão Monitor + Copiar celular + salvar + publicar...")
             try:
-                tela.clicar("ck_btn_visao_celular", timeout=5000)
+                tela.clicar("ck_btn_visao_monitor", timeout=5000)
                 page.wait_for_timeout(1000)
             except RoboError:
-                job.log("Botão da visão celular não achado — seguindo direto pro Copiar celular.", "aviso")
+                job.log("Botão da visão Monitor não achado — seguindo direto pro Copiar celular.", "aviso")
             tela.clicar("ck_btn_copiar_celular", timeout=8000)
             page.wait_for_timeout(1200)
             tela.clicar("ck_btn_salvar_pagina", timeout=10000)

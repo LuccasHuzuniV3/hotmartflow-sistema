@@ -393,10 +393,10 @@ MAPA = {
     "ck_campo_countdown_zerado": [
         {"tipo": "css", "css": "textarea#countdown-over-text"},
     ],
-    "ck_btn_visao_celular": [           # toggle "Celular | Monitor" do topo
-        {"tipo": "role", "role": "button", "nome": "^Celular$"},
-        {"tipo": "texto", "texto": "^Celular$"},
-        {"tipo": "css", "css": "button.hot-button._rounded-pill"},
+    "ck_btn_visao_monitor": [           # toggle "Celular | Monitor" do topo:
+        {"tipo": "role", "role": "button", "nome": "^Monitor$"},   # a montagem e feita
+        {"tipo": "texto", "texto": "^Monitor$"},                   # na visao Celular;
+        {"tipo": "css", "css": "button.hot-button._rounded-pill"}, # Monitor vem depois
     ],
     "ck_btn_copiar_celular": [
         {"tipo": "role", "role": "button", "nome": "Copiar celular"},
