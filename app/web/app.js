@@ -863,6 +863,7 @@ $("btn-revisar-tudo").addEventListener("click", revisarTudoGeral);
 // Cada publicacao passa pelo robo normal (com as pausas de código 2FA e
 // confirmação); a fila só avança quando a atual termina.
 async function publicarTodos() {
+  if (estado.checkoutFila) { toast("A fila de checkouts está rodando — espere ou cancele.", "erro"); return; }
   if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
   const modo = $("chk-ensaio").checked ? "ensaio" : "real";
   const fila = [];
@@ -936,6 +937,91 @@ async function publicarTodos() {
   toast(`Fila concluída em ${total}: ${feitos} processado(s)` + (pulados ? `, ${pulados} pulado(s)` : "") + " ✓", "ok");
   if (!estado.filaCancelada) tocarAlarme();  // 🔔 avisa que terminou tudo
 }
+
+// Fila de CHECKOUTS: monta a página de pagamento de todos os Principais
+// publicados (todas as redes), um por vez. Pula países que já têm link.
+function nomeRede(pasta) {
+  return String(pasta || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || String(pasta || "");
+}
+
+async function checkoutTodos() {
+  if (estado.publicandoFila || estado.checkoutFila) { toast("Já tem uma fila rodando.", "erro"); return; }
+  if (!estado.produtos.length) { toast("Nenhum produto na fila.", "erro"); return; }
+
+  // links já gerados (rede|país) — esses são pulados (pode rodar de novo à vontade)
+  const existentes = new Set();
+  try {
+    const r = await api("GET", "/api/checkouts");
+    for (const [rede, paises] of Object.entries(r.arvore || {})) {
+      for (const pais of Object.keys(paises)) existentes.add(`${rede}|${pais}`);
+    }
+  } catch (_) {}
+
+  const fila = [];
+  for (const p of estado.produtos) {
+    if (p.tipo !== "Principal") continue;
+    const rede = nomeRede(p.pasta);
+    for (const i of p.idiomas) {
+      if (i.status !== "publicado") continue;
+      if (existentes.has(`${rede}|${i.pais}`)) continue;
+      fila.push({ pid: p.id, codigo: i.codigo, pais: i.pais,
+                  titulo: p.titulo_pt, ordemIdioma: p.idiomas.indexOf(i) });
+    }
+  }
+  fila.sort((a, b) => a.ordemIdioma - b.ordemIdioma);
+  if (!fila.length) {
+    toast("Nenhum checkout pendente — os países publicados já têm link (ou nada foi publicado).", "");
+    return;
+  }
+  if (!confirm(`Montar ${fila.length} página(s) de checkout, uma a uma?\n\n`
+    + "Países que já têm link no histórico foram pulados. Cada página leva uns minutos.")) return;
+
+  const btn = $("btn-checkout-tudo");
+  estado.filaCancelada = false;
+  estado.checkoutFila = true;
+  btn.textContent = "⛔ Cancelar fila";
+  let feitos = 0, falhas = 0;
+  const inicioFila = Date.now();
+  const cron = $("fila-cronometro");
+  cron.classList.remove("oculto", "fim");
+  const tickCron = () => {
+    cron.textContent = `🛒 ${fmtDuracao(Date.now() - inicioFila)} · ${feitos}/${fila.length}`;
+  };
+  tickCron();
+  const timerCron = setInterval(tickCron, 1000);
+  try {
+    for (let n = 0; n < fila.length; n++) {
+      if (estado.filaCancelada) { toast("Fila cancelada.", "aviso"); break; }
+      const item = fila[n];
+      toast(`Checkout ${n + 1} de ${fila.length}: ${item.titulo} — ${item.pais}`, "");
+      try {
+        await api("POST", `/api/produtos/${item.pid}/checkout/${item.codigo}`);
+      } catch (e) { toast(`${item.pais}: ${e.message}`, "erro"); falhas++; continue; }
+      iniciarPollPublicacao();
+      const fim = await aguardarFimPublicacao();
+      if (fim === "cancelado" || estado.filaCancelada) { toast("Fila cancelada.", "aviso"); break; }
+      if (fim === "erro") falhas++;
+      else feitos++;
+    }
+  } finally {
+    clearInterval(timerCron);
+    estado.checkoutFila = false;
+    btn.textContent = "🛒 Checkouts em fila";
+  }
+  const total = fmtDuracao(Date.now() - inicioFila);
+  cron.classList.add("fim");
+  cron.textContent = estado.filaCancelada
+    ? `🛒 ${total} (cancelada) · ${feitos} checkout(s)`
+    : `🛒 Checkouts em ${total} · ${feitos} criado(s)${falhas ? `, ${falhas} falha(s)` : ""}`;
+  toast(`Fila de checkouts concluída em ${total}: ${feitos} criado(s)`
+    + (falhas ? `, ${falhas} falha(s)` : "") + " ✓", falhas ? "" : "ok");
+  if (!estado.filaCancelada) tocarAlarme();  // 🔔 terminou tudo
+}
+
+$("btn-checkout-tudo").addEventListener("click", () => {
+  if (estado.checkoutFila) cancelarFila();
+  else checkoutTodos();
+});
 
 // Alarme sonoro (Web Audio — não precisa de arquivo). 3 rodadas de bipes.
 function tocarAlarme() {
