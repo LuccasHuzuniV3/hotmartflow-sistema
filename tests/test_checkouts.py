@@ -24,6 +24,17 @@ def test_registrar_e_agrupar_links():
     assert arv["REDE 3"]["Alemao"][0]["link"].startswith("https://pay.hotmart.com/AAA")
 
 
+def test_remover_registro_de_link():
+    checkouts.registrar(rede="R", pais="Brasil", titulo="Teste",
+                        link="https://pay.hotmart.com/TESTE1")
+    checkouts.registrar(rede="R", pais="Alemao", titulo="Real",
+                        link="https://pay.hotmart.com/REAL1")
+    assert checkouts.remover_registro(link="https://pay.hotmart.com/TESTE1") is True
+    restam = checkouts.listar()
+    assert len(restam) == 1 and restam[0]["link"].endswith("REAL1")
+    assert checkouts.remover_registro(link="https://pay.hotmart.com/TESTE1") is False
+
+
 # ---------------------------------------------------------------------------
 # Texto da contagem regressiva (tabela embutida, todos os idiomas)
 # ---------------------------------------------------------------------------
@@ -65,6 +76,30 @@ def test_bumps_do_checkout_filtra_e_ordena():
     bumps = robo._bumps_do_checkout(produtos.obter(principal["id"]), "de")
     assert [b["titulo"] for b in bumps] == ["Bump Eins", "Bump Zwei"]  # ordem 1, 2
     assert all(len(b["descricao"]) <= 500 for b in bumps)              # corta em 500
+
+
+# ---------------------------------------------------------------------------
+# _resumir_descricao — corta na última FRASE completa (nunca no meio da palavra)
+# ---------------------------------------------------------------------------
+def test_resumir_descricao_corta_no_ponto_final():
+    frase = "Primeira frase completa. Segunda frase que também cabe! "
+    texto = frase * 20  # bem maior que 500
+    out = robo._resumir_descricao(texto, 500)
+    assert len(out) <= 500
+    assert out.endswith((".", "!", "?"))          # termina em frase completa
+    assert "Primeira frase completa." in out
+
+
+def test_resumir_descricao_curta_fica_intacta():
+    assert robo._resumir_descricao("Curta e boa.", 500) == "Curta e boa."
+
+
+def test_resumir_descricao_sem_pontuacao_corta_na_palavra():
+    texto = ("palavra " * 100).strip()  # 800 chars sem pontuacao
+    out = robo._resumir_descricao(texto, 500)
+    assert len(out) <= 500
+    assert not out.endswith("palavr")   # nao corta no meio da palavra
+    assert out.endswith("palavra")
 
 
 # ---------------------------------------------------------------------------

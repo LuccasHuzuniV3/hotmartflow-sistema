@@ -284,6 +284,22 @@ def _validar_item(produto: dict, item: dict, modo: str) -> None:
             raise RoboError(f"{item['pais']}: anexo '{anexo.get('nome')}' sem PDF em {anexo.get('pdf')!r}.")
 
 
+def _resumir_descricao(texto: str, limite: int = 500) -> str:
+    """Encurta a descrição pro campo do order bump SEM cortar palavra: fica com
+    as frases COMPLETAS que couberem no limite (corta no último . ! ? antes do
+    limite). Se não houver pontuação, corta na última palavra inteira."""
+    texto = (texto or "").strip()
+    if len(texto) <= limite:
+        return texto
+    pedaco = texto[:limite]
+    fim_frase = max(pedaco.rfind("."), pedaco.rfind("!"), pedaco.rfind("?"))
+    if fim_frase > 0:
+        return pedaco[:fim_frase + 1].strip()
+    # sem pontuação no trecho: corta na última palavra inteira
+    corte = pedaco.rsplit(" ", 1)[0] if " " in pedaco else pedaco
+    return corte.strip()
+
+
 def _bumps_do_checkout(produto: dict, codigo: str) -> list[dict]:
     """Order Bumps da MESMA rede (pasta) no idioma do checkout, em ordem de
     número — só os PUBLICADOS (precisam existir na Hotmart pra entrar no bump).
@@ -301,7 +317,8 @@ def _bumps_do_checkout(produto: dict, codigo: str) -> list[dict]:
         bumps.append({
             "numero": p.get("numero") or 0,
             "titulo": it["titulo"].strip(),
-            "descricao": (it.get("descricao") or "").strip()[:500],  # limite da Hotmart
+            # limite de 500 da Hotmart — corta na última FRASE completa
+            "descricao": _resumir_descricao(it.get("descricao") or "", 500),
         })
     bumps.sort(key=lambda b: b["numero"])
     return bumps

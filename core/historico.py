@@ -66,6 +66,29 @@ def agrupado() -> dict:
     return arv
 
 
+def remover_registro(*, rede: str = "", pais: str = "", titulo: str = "",
+                     tipo: str = "", quando: str = "") -> bool:
+    """Remove UM registro (a primeira linha que casa com todos os campos).
+    Usado pelo botão 🗑 de item — pra tirar testes do meio do histórico."""
+    with _TRAVA:
+        regs = _parse(ARQUIVO)
+        for n, r in enumerate(regs):
+            if (r.get("rede") == rede and r.get("pais") == pais
+                    and r.get("titulo") == titulo and r.get("tipo") == tipo
+                    and r.get("quando") == quando):
+                del regs[n]
+                _gravar(regs)
+                return True
+        return False
+
+
+def _gravar(registros: list[dict]) -> None:
+    ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
+    with open(ARQUIVO, "w", encoding="utf-8") as f:
+        for r in registros:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
 def remover_tudo() -> int:
     """'Limpa' o histórico movendo o arquivo pra um BACKUP datado — nada é
     apagado de verdade (recuperável pelo botão Recuperar). Retorna quantos havia."""

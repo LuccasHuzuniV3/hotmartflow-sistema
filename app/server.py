@@ -68,6 +68,19 @@ class TitulosIn(BaseModel):
     pasta: str
 
 
+class RegistroHistIn(BaseModel):
+    rede: str = ""
+    pais: str = ""
+    titulo: str = ""
+    tipo: str = ""
+    quando: str = ""
+
+
+class RegistroCkIn(BaseModel):
+    link: str
+    quando: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -149,6 +162,21 @@ def historico_listar():
 @app.delete("/api/historico")
 def historico_limpar():
     return {"ok": True, "removidos": historico.remover_tudo()}
+
+
+@app.post("/api/historico/remover-registro")
+def historico_remover_registro(body: RegistroHistIn):
+    """Remove UM item do histórico (botão 🗑 — tirar testes do meio)."""
+    ok = historico.remover_registro(rede=body.rede, pais=body.pais,
+                                    titulo=body.titulo, tipo=body.tipo,
+                                    quando=body.quando)
+    return {"ok": ok}
+
+
+@app.post("/api/checkouts/remover")
+def checkouts_remover(body: RegistroCkIn):
+    """Remove UM link do histórico de checkouts (botão 🗑)."""
+    return {"ok": checkouts.remover_registro(link=body.link, quando=body.quando)}
 
 
 @app.post("/api/historico/recuperar")

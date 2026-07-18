@@ -52,6 +52,21 @@ def listar() -> list[dict]:
     return out
 
 
+def remover_registro(*, link: str, quando: str = "") -> bool:
+    """Remove UM link (a primeira linha com esse link — e 'quando', se vier)."""
+    with _TRAVA:
+        regs = listar()
+        for n, r in enumerate(regs):
+            if r.get("link") == link and (not quando or r.get("quando") == quando):
+                del regs[n]
+                ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
+                with open(ARQUIVO, "w", encoding="utf-8") as f:
+                    for x in regs:
+                        f.write(json.dumps(x, ensure_ascii=False) + "\n")
+                return True
+        return False
+
+
 def agrupado() -> dict:
     """{rede: {pais: [registros...]}} — árvore rede -> país -> links."""
     arv: dict[str, dict] = {}

@@ -79,6 +79,23 @@ def test_restaurar_sem_backup_retorna_zero():
     assert historico.restaurar_ultimo_backup() == 0
 
 
+def test_remover_registro_tira_so_o_item_certo():
+    historico.registrar(rede="R", pais="Brasil", titulo="TESTE", tipo="Principal")
+    historico.registrar(rede="R", pais="Brasil", titulo="Real", tipo="Principal")
+    alvo = [r for r in historico.listar() if r["titulo"] == "TESTE"][0]
+    ok = historico.remover_registro(rede=alvo["rede"], pais=alvo["pais"],
+                                    titulo=alvo["titulo"], tipo=alvo["tipo"],
+                                    quando=alvo["quando"])
+    assert ok is True
+    restam = historico.listar()
+    assert len(restam) == 1 and restam[0]["titulo"] == "Real"
+    # remover de novo (nao existe mais) -> False, sem efeito
+    assert historico.remover_registro(rede=alvo["rede"], pais=alvo["pais"],
+                                      titulo=alvo["titulo"], tipo=alvo["tipo"],
+                                      quando=alvo["quando"]) is False
+    assert len(historico.listar()) == 1
+
+
 def test_linha_corrompida_nao_derruba():
     historico.ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
     historico.ARQUIVO.write_text('{"rede":"R","pais":"Brasil","titulo":"ok","tipo":"Principal"}\nLIXO\n',

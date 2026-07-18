@@ -120,6 +120,8 @@ async function carregarHistorico() {
           <span class="h-tit">${esc(it.titulo)}</span>
           ${it.hotmart_id ? `<span class="h-id"><a href="https://app.hotmart.com/products/manage/${esc(it.hotmart_id)}" target="_blank">#${esc(it.hotmart_id)}</a></span>` : ""}
           <span class="h-quando">${esc((it.quando || "").replace("T", " "))}</span>
+          <button class="btn mini h-del" title="Excluir este registro"
+            data-hist-del="${encodeURIComponent(JSON.stringify({ rede, pais, titulo: it.titulo, tipo: it.tipo, quando: it.quando }))}">🗑</button>
         </div>`).join("");
       return `<div class="hist-pais"><div class="pais-nome">${esc(pais)} <small>(${itens.length})</small></div>${linhas}</div>`;
     }).join("");
@@ -144,6 +146,8 @@ async function carregarCheckouts() {
           <a class="ck-link" href="${esc(it.link)}" target="_blank">${esc(it.link)}</a>
           <button class="btn mini" data-ck-link="${esc(it.link)}" title="Copiar o link">📋</button>
           <span class="h-quando">${esc((it.quando || "").replace("T", " "))}</span>
+          <button class="btn mini h-del" title="Excluir este link"
+            data-ck-del="${encodeURIComponent(JSON.stringify({ link: it.link, quando: it.quando }))}">🗑</button>
         </div>`).join("")
     ).join("");
     const total = Object.values(paises).reduce((a, arr) => a + arr.length, 0);
@@ -152,12 +156,35 @@ async function carregarCheckouts() {
 }
 
 $("ck-arvore").addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-ck-del]");
+  if (del) {
+    const reg = JSON.parse(decodeURIComponent(del.dataset.ckDel));
+    if (!confirm(`Excluir este link de checkout?\n${reg.link}`)) return;
+    try {
+      const r = await api("POST", "/api/checkouts/remover", reg);
+      toast(r.ok ? "Link excluído ✓" : "Link não encontrado (já removido?).", r.ok ? "ok" : "erro");
+      carregarCheckouts();
+    } catch (err) { toast(err.message, "erro"); }
+    return;
+  }
   const btn = e.target.closest("[data-ck-link]");
   if (!btn) return;
   try {
     await navigator.clipboard.writeText(btn.dataset.ckLink);
     toast("Link copiado 📋", "ok");
   } catch (_) { toast("Não consegui copiar — copie manualmente.", "erro"); }
+});
+
+$("hist-arvore").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-hist-del]");
+  if (!btn) return;
+  const reg = JSON.parse(decodeURIComponent(btn.dataset.histDel));
+  if (!confirm(`Excluir do histórico:\n${reg.tipo} — ${reg.pais}\n${reg.titulo}?`)) return;
+  try {
+    const r = await api("POST", "/api/historico/remover-registro", reg);
+    toast(r.ok ? "Registro excluído ✓" : "Registro não encontrado (já removido?).", r.ok ? "ok" : "erro");
+    carregarHistorico();
+  } catch (err) { toast(err.message, "erro"); }
 });
 
 $("btn-hist-atualizar").addEventListener("click", carregarHistorico);
