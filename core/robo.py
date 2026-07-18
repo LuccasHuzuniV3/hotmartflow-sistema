@@ -1303,59 +1303,60 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             pass
 
 
-def _arrastar_imagem_topo(tela: Tela, page) -> None:
-    """Arrasta a seção da imagem (inserida no FIM da página) pro componente do
-    TOPO do canvas — com movimento de mouse REAL e gradual (builders ignoram
-    'teleporte' de drag).
-
-    A imagem certa é a ÚLTIMA do CANVAS: filtra x > 300 pra NÃO agarrar a
-    miniatura do painel lateral (foi o erro da 1ª versão)."""
-    caixas = []
-    for ctx in tela._contextos():
-        try:
-            imgs = ctx.locator("img")
-            for i in range(min(imgs.count(), 80)):
-                el = imgs.nth(i)
-                try:
-                    if not el.is_visible():
-                        continue
-                    box = el.bounding_box()
-                except Exception:
-                    continue
-                if not box or box["x"] < 300 or box["width"] < 80:
-                    continue  # painel lateral / iconezinhos
-                caixas.append(box)
-        except Exception:
-            continue
-    if not caixas:
-        raise RoboError("não achei a imagem inserida no canvas")
-    origem = caixas[-1]  # a inserida por último (fim da página)
-    # alvo: slot vazio do topo se existir; senão o elemento mais alto do canvas
+def _posicionar_imagem_topo(tela: Tela, page) -> None:
+    """Depois do 'Inserir', o chip 'Imagem' fica GRUDADO no cursor (print do
+    usuário) — não é drag&drop: é LEVAR o mouse até o slot do topo e CLICAR
+    pra soltar. Move gradualmente (o chip segue o cursor) e clica no slot."""
     alvo = None
     try:
-        el = tela._localizar("ck_slot_vazio", timeout=2000)
+        el = tela._localizar("ck_slot_vazio", timeout=4000)
         alvo = el.bounding_box()
     except Exception:
         pass
     if alvo is None:
-        alvo = min(caixas, key=lambda b: b["y"])
-    if abs(alvo["y"] - origem["y"]) < 40:
-        return  # já está no topo
-    sx = origem["x"] + origem["width"] / 2
-    sy = origem["y"] + origem["height"] / 2
+        raise RoboError("não achei o slot do topo pra soltar a imagem")
     tx = alvo["x"] + alvo["width"] / 2
-    ty = alvo["y"] + 25   # borda de cima do alvo (soltar ACIMA do componente)
+    ty = alvo["y"] + alvo["height"] / 2
+    # parte de baixo do canvas e sobe ate o slot, em passos (chip segue o mouse)
+    sx, sy = tx, ty + 300
     page.mouse.move(sx, sy)
-    page.wait_for_timeout(300)
-    page.mouse.down()
-    page.wait_for_timeout(300)
-    passos = 12
+    page.wait_for_timeout(200)
+    passos = 10
     for n in range(1, passos + 1):
         page.mouse.move(sx + (tx - sx) * n / passos, sy + (ty - sy) * n / passos)
-        page.wait_for_timeout(60)
-    page.wait_for_timeout(500)   # deixa o builder acender a zona de drop
-    page.mouse.up()
-    page.wait_for_timeout(1000)
+        page.wait_for_timeout(50)
+    page.wait_for_timeout(500)   # deixa o slot "acender"
+    page.mouse.click(tx, ty)     # solta o componente no slot
+    page.wait_for_timeout(1200)
+
+
+def _clicar_aplicar_cor(tela: Tela, page, vezes: int = 3) -> None:
+    """Clica os 'Aplicar' do Background na ORDEM CERTA: do ÚLTIMO do DOM pro
+    primeiro. Com o picker aberto ha DOIS 'Aplicar' — o do picker é popup
+    (fim do DOM); clicar o do painel primeiro NAO confirma a cor (era o bug)."""
+    import re
+    alvo = re.compile(r"^\s*Aplicar\s*$", re.I)
+    for _ in range(vezes):
+        clicado = False
+        for ctx in tela._contextos():
+            try:
+                btns = ctx.get_by_role("button", name=alvo)
+                for i in range(btns.count() - 1, -1, -1):   # ultimo -> primeiro
+                    b = btns.nth(i)
+                    try:
+                        if b.is_visible():
+                            b.click(timeout=2500)
+                            clicado = True
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+            if clicado:
+                break
+        if not clicado:
+            return
+        page.wait_for_timeout(900)
 
 
 # ---------------------------------------------------------------------------
@@ -1443,13 +1444,9 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             tela.clicar("ck_btn_color_trigger", timeout=8000)
             page.wait_for_timeout(500)
             tela.preencher("ck_campo_color_hex", "#000000", delay=DELAY_CK)
-            # a cor SO vale com os DOIS Aplicar (do picker E do painel) — clica
-            # enquanto houver "Aplicar" visivel na tela (ate 3x, com pausa)
-            for _ in range(3):
-                if not tela._elemento_visivel("ck_btn_aplicar", timeout=1500):
-                    break
-                tela.clicar("ck_btn_aplicar", timeout=5000)
-                page.wait_for_timeout(900)
+            # DOIS Aplicar obrigatorios (picker E painel) — na ordem certa:
+            # o do picker (popup, fim do DOM) PRIMEIRO, depois o do painel
+            _clicar_aplicar_cor(tela, page)
             page.wait_for_timeout(800)
             tela.shot("ck_fundo")
 
@@ -1464,16 +1461,16 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
                 page.wait_for_timeout(1000)
                 tela.clicar("ck_btn_inserir", timeout=8000)
                 page.wait_for_timeout(1500)
-                # arrasta a secao da imagem (inserida no FIM) pro componente do
-                # TOPO — mouse real em passos (best-effort, nunca derruba)
+                # o chip 'Imagem' fica preso no cursor — leva ate o slot do
+                # topo e CLICA pra soltar (best-effort, nunca derruba)
                 try:
-                    _arrastar_imagem_topo(tela, page)
+                    _posicionar_imagem_topo(tela, page)
                     tela.shot("ck_imagem_posicionada")
                 except Exception as e:
                     tela.shot("ck_erro_drag")
-                    job.log(f"Não consegui arrastar a imagem pro topo ({str(e)[:100]}) — "
-                            "arruma na mão; me manda o print do bloco da imagem que eu "
-                            "calibro o arrasto.", "aviso")
+                    job.log(f"Não consegui posicionar a imagem no topo ({str(e)[:100]}) — "
+                            "posiciona na mão; me manda o print do momento do encaixe "
+                            "que eu calibro.", "aviso")
             else:
                 job.log(f"Sem imagem de checkout pra {item['pais']} na pasta da rede "
                         "(procurei subpasta com 'checkout' no nome) — página sai sem imagem.", "aviso")
