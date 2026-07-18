@@ -273,4 +273,34 @@ MAPA = {
     "marcador_sucesso": [
         {"tipo": "texto", "texto": "Enviado para aprovação"},
     ],
+
+    # ---------- cupom (menu lateral do produto > Cupons) ----------
+    # seletores calibrados com o inspetor (prints do usuario):
+    #   menu = <button> "Cupons" | abrir = <button> "Criar cupom"
+    #   codigo = input#code (placeholder "Digite o nome do cupom")
+    #   desconto = input#percentage — money-input direita->esquerda ("0,00")
+    "menu_cupons": [
+        {"tipo": "role", "role": "button", "nome": "^Cupons$"},
+        {"tipo": "role", "role": "link", "nome": "^Cupons$"},
+        {"tipo": "texto", "texto": "^Cupons$"},
+    ],
+    "btn_criar_cupom": [
+        {"tipo": "role", "role": "button", "nome": "Criar cupom"},
+        {"tipo": "texto", "texto": "Criar cupom"},
+    ],
+    "campo_cupom_codigo": [
+        {"tipo": "css", "css": "input#code"},
+        {"tipo": "label", "texto": "C[oó]digo do Cupom"},
+        {"tipo": "placeholder", "texto": "nome do cupom"},
+    ],
+    "campo_cupom_desconto": [
+        {"tipo": "css", "css": "input#percentage"},
+        {"tipo": "label", "texto": "Porcentagem de desconto"},
+    ],
+    "btn_salvar_cupom": [
+        {"tipo": "role", "role": "button", "nome": "^Salvar$"},
+        {"tipo": "role", "role": "button", "nome": "^Criar$"},
+        {"tipo": "role", "role": "button", "nome": "^Confirmar$"},
+        {"tipo": "role", "role": "button", "nome": "Criar cupom"},
+    ],
 }

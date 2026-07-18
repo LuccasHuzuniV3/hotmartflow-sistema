@@ -53,7 +53,6 @@ def test_tem_segundo_coprodutor_e_cupom_nos_defaults():
     assert s["coproducao2"] == {"email": "", "percentual": 45}
     assert s["cupom"]["ativo"] is False          # desligado por padrao
     assert s["cupom"]["desconto"] == 10
-    assert s["hotmart_api"] == {"client_id": "", "client_secret": ""}
 
 
 def test_salvar_e_recarregar_preserva_valores():

@@ -29,11 +29,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from core import cupons
 from core import produtos
 from core import gmail_code
 from core import historico
-from core import hotmart_api
 from core import hotmart_map as hm
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -268,58 +266,6 @@ def _validar_item(produto: dict, item: dict, modo: str) -> None:
             raise RoboError(f"{item['pais']}: anexo '{anexo.get('nome')}' sem PDF em {anexo.get('pdf')!r}.")
 
 
-def _criar_cupom_pos_publicacao(job: Job, produto: dict, settings: dict) -> None:
-    """Cria o cupom de desconto no ebook PRINCIPAL recém-publicado (via API).
-
-    Best-effort: qualquer falha vira aviso no painel — a publicação já foi
-    concluída e NUNCA é derrubada por causa do cupom. Se a Hotmart recusar
-    (ex.: produto ainda 'Em análise'), o cupom vai pra FILA DE PENDENTES e é
-    retentado a cada nova publicação e pelo botão na aba Histórico."""
-    c = settings.get("cupom", {})
-    if not c.get("ativo"):
-        return
-    api = settings.get("hotmart_api", {})
-
-    # 1) retenta os cupons PENDENTES de publicações anteriores — o produto de
-    #    10 min atrás já pode ter sido aprovado pela Hotmart
-    try:
-        r = cupons.tentar_todos(api.get("client_id", ""), api.get("client_secret", ""))
-        for cr in r["criados"]:
-            job.log(f"Cupom pendente criado: '{cr['codigo']}' no produto "
-                    f"{cr['product_id']} ({cr.get('pais', '')}) ✔", "ok")
-    except Exception:
-        pass
-
-    # 2) cupom DESTE produto (só o Principal ganha cupom)
-    if produto.get("tipo") != "Principal":
-        return
-    if not (job.hotmart_id or "").strip():
-        job.log("Cupom: não capturei o ID do produto na Hotmart — crie na mão.", "aviso")
-        return
-    try:
-        hotmart_api.criar_cupom(
-            product_id=job.hotmart_id,
-            codigo=c.get("codigo", ""),
-            desconto_pct=float(c.get("desconto", 0) or 0),
-            client_id=api.get("client_id", ""),
-            client_secret=api.get("client_secret", ""),
-        )
-        job.log(f"Cupom '{(c.get('codigo') or '').strip()}' ({c.get('desconto')}%) "
-                f"criado no produto {job.hotmart_id} ✔", "ok")
-    except hotmart_api.HotmartApiError as e:
-        try:
-            cupons.registrar(product_id=job.hotmart_id, codigo=c.get("codigo", ""),
-                             desconto_pct=float(c.get("desconto", 0) or 0),
-                             titulo=job.titulo, pais=job.pais, erro=str(e))
-            job.log(f"Cupom recusado agora ({str(e)[:120]}...) — guardei na fila de "
-                    "PENDENTES: retento sozinho nas próximas publicações (ou use o "
-                    "botão na aba Histórico).", "aviso")
-        except Exception:
-            job.log(f"Cupom: {e} — o produto foi publicado normalmente.", "aviso")
-    except Exception as e:
-        job.log(f"Cupom: falha inesperada ({str(e)[:150]}) — produto publicado normalmente.", "aviso")
-
-
 def _rodar(job: Job, produto: dict, item: dict) -> None:
     try:
         if job.modo == "simulado":
@@ -341,12 +287,6 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
                     tipo=tipo, hotmart_id=job.hotmart_id)
             except Exception:
                 pass  # historico nunca derruba a publicacao
-            # cupom automático no PRINCIPAL (via API) — best-effort, nunca derruba
-            from core import config as _cfg
-            try:
-                _criar_cupom_pos_publicacao(job, produto, _cfg.carregar_settings())
-            except Exception:
-                pass
         else:
             produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "revisado"})
             job.log(f"Modo {job.modo} concluído — nada foi enviado de verdade.", "ok")
@@ -794,6 +734,34 @@ class Tela:
             self.page.wait_for_timeout(1500)
         return False
 
+    def criar_cupom_ui(self, codigo: str, desconto_pct: int) -> None:
+        """Cria o cupom CLICANDO na tela de Cupons do produto (menu lateral) —
+        a API oficial de cupom é bugada (200 sem criar), então vai pela UI mesmo.
+
+        Fluxo: menu 'Cupons' -> 'Criar cupom' -> código + desconto -> salvar.
+        Sucesso SÓ se o código aparecer na lista depois de salvar."""
+        if not (codigo or "").strip():
+            raise RoboError("Código do cupom vazio (Config > Cupom).")
+        self.clicar("menu_cupons", timeout=8000)
+        self.page.wait_for_timeout(1500)
+        self.clicar("btn_criar_cupom", timeout=10000)
+        self.page.wait_for_timeout(1000)
+        self.preencher("campo_cupom_codigo", codigo.strip())
+        # o campo de desconto (#percentage) e money-input direita->esquerda
+        # ("0,00"): pra mostrar "25,00" digitamos os digitos de 25*100 = "2500"
+        digitos_pct = str(int(round(float(desconto_pct) * 100)))
+        self.preencher("campo_cupom_desconto", digitos_pct)
+        self.shot("cupom_preenchido")
+        self.clicar("btn_salvar_cupom", timeout=8000)
+        self.page.wait_for_timeout(1500)
+        # confere DE VERDADE: o codigo tem que aparecer na lista de cupons
+        if not self.existe_texto(codigo.strip(), timeout=8000):
+            self.shot("erro_cupom_nao_listado")
+            raise RoboError(
+                f"Salvei mas o cupom '{codigo}' não apareceu na lista — "
+                "confira o print em data/publicacoes."
+            )
+
     def existe_texto(self, texto: str, timeout: float = 3000) -> bool:
         """Procura o texto na página E nos iframes, tentando ate 'timeout'."""
         import re
@@ -1179,6 +1147,23 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 )
             job.log("Cadastro finalizado — enviado para aprovação ✔", "ok")
             tela.shot("finalizado")
+
+            # ---- 8. cupom no PRINCIPAL — clicando na tela (a API é bugada) ----
+            # best-effort: o produto JA esta publicado; se o cupom falhar, vira
+            # aviso com print pra calibrar, nunca derruba a publicacao.
+            c_cfg = s.get("cupom", {})
+            if c_cfg.get("ativo") and produto.get("tipo") == "Principal":
+                try:
+                    job.marcar_etapa("cupom",
+                                     f"Criando cupom '{c_cfg.get('codigo')}' ({c_cfg.get('desconto')}%) na tela de Cupons...")
+                    tela.criar_cupom_ui(str(c_cfg.get("codigo") or ""),
+                                        int(float(c_cfg.get("desconto", 10) or 10)))
+                    job.log(f"Cupom '{c_cfg.get('codigo')}' criado e conferido na lista ✔", "ok")
+                except Exception as e:
+                    tela.shot("erro_cupom")
+                    job.log(f"Cupom: não consegui criar clicando ({str(e)[:150]}) — o produto "
+                            "foi publicado normalmente. Me mande o print da tela de criar "
+                            "cupom pra eu calibrar os seletores.", "aviso")
 
             # ---- medição: onde o tempo foi gasto (aparece no painel e em arquivo) ----
             resumo = job.resumo_tempos()

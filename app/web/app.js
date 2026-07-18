@@ -96,7 +96,6 @@ function numeroTipoHist(tipo) {
 }
 
 async function carregarHistorico() {
-  atualizarCuponsPendentes();  // roda em paralelo, não bloqueia o histórico
   let r;
   try { r = await api("GET", "/api/historico"); } catch (e) { toast(e.message, "erro"); return; }
   $("hist-resumo").textContent = r.total
@@ -126,32 +125,6 @@ async function carregarHistorico() {
     return `<div class="hist-rede"><h3>${esc(rede)} <small>${totalRede} publicação(ões)</small></h3>${corpo}</div>`;
   }).join("");
 }
-
-async function atualizarCuponsPendentes() {
-  const btn = $("btn-cupons-pendentes");
-  try {
-    const r = await api("GET", "/api/cupons-pendentes");
-    btn.classList.toggle("oculto", !r.total);
-    if (r.total) btn.textContent = `🎟️ Cupons pendentes (${r.total})`;
-  } catch (_) { btn.classList.add("oculto"); }
-}
-
-$("btn-cupons-pendentes").addEventListener("click", async () => {
-  const btn = $("btn-cupons-pendentes");
-  btn.disabled = true;
-  btn.textContent = "🎟️ tentando...";
-  try {
-    const r = await api("POST", "/api/cupons-pendentes/tentar");
-    const ok = r.criados.length, falha = r.falhas.length;
-    if (ok && !falha) toast(`${ok} cupom(ns) criado(s) ✓`, "ok");
-    else if (ok) toast(`${ok} criado(s) ✓ — ${falha} ainda pendente(s) (produto em análise?)`, "");
-    else toast(`Nenhum criado — ${falha} ainda recusado(s) pela Hotmart (produto em análise?)`, "erro");
-  } catch (e) { toast(e.message, "erro"); }
-  finally {
-    btn.disabled = false;
-    await atualizarCuponsPendentes();
-  }
-});
 
 $("btn-hist-atualizar").addEventListener("click", carregarHistorico);
 $("btn-hist-limpar").addEventListener("click", async () => {
@@ -209,8 +182,6 @@ async function carregarConfig() {
   $("cfg-cupom-ativo").checked = !!(s.cupom && s.cupom.ativo);
   $("cfg-cupom-codigo").value = (s.cupom && s.cupom.codigo) || "";
   $("cfg-cupom-desconto").value = (s.cupom && s.cupom.desconto) || 10;
-  $("cfg-hapi-id").value = (s.hotmart_api && s.hotmart_api.client_id) || "";
-  $("cfg-hapi-secret").value = (s.hotmart_api && s.hotmart_api.client_secret) || "";
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
   $("cfg-cdp-port").value = (s.robo && s.robo.cdp_port) || 9222;
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
@@ -235,36 +206,6 @@ async function carregarConfig() {
   const ultima = (s.pastas_recentes || [])[0];
   if (ultima && !$("scan-pasta").value) $("scan-pasta").value = ultima;
 }
-
-$("btn-testar-hapi").addEventListener("click", async () => {
-  const btn = $("btn-testar-hapi");
-  const fb = $("hapi-feedback");
-  btn.disabled = true;
-  fb.textContent = "testando...";
-  fb.style.color = "";
-  try {
-    // salva o que está nos campos antes (pra testar exatamente o que você colou)
-    await api("POST", "/api/settings", {
-      hotmart_api: {
-        client_id: $("cfg-hapi-id").value.trim(),
-        client_secret: $("cfg-hapi-secret").value.trim(),
-      },
-    });
-    const r = await api("POST", "/api/hotmart-api/testar");
-    if (r.ok) {
-      fb.textContent = "✓ Conectou — credenciais válidas";
-      fb.style.color = "var(--ok)";
-    } else {
-      fb.textContent = `✗ ${r.erro}`;
-      fb.style.color = "var(--erro)";
-    }
-  } catch (e) {
-    fb.textContent = `✗ ${e.message}`;
-    fb.style.color = "var(--erro)";
-  } finally {
-    btn.disabled = false;
-  }
-});
 
 $("btn-salvar-config").addEventListener("click", async () => {
   const precos = {};
@@ -299,10 +240,6 @@ $("btn-salvar-config").addEventListener("click", async () => {
       ativo: $("cfg-cupom-ativo").checked,
       codigo: $("cfg-cupom-codigo").value.trim(),
       desconto: parseInt($("cfg-cupom-desconto").value || "10", 10),
-    },
-    hotmart_api: {
-      client_id: $("cfg-hapi-id").value.trim(),
-      client_secret: $("cfg-hapi-secret").value.trim(),
     },
     robo: {
       delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10),

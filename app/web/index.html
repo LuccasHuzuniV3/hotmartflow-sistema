@@ -108,8 +108,6 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
       <div class="hist-topo">
         <span id="hist-resumo" class="hist-resumo">—</span>
         <button id="btn-hist-atualizar" class="btn mini">Atualizar</button>
-        <button id="btn-cupons-pendentes" class="btn mini oculto"
-          title="Cupons que a Hotmart recusou na hora (produto ainda em análise) — clique pra tentar criar de novo">🎟️ Cupons pendentes</button>
         <button id="btn-hist-limpar" class="btn mini perigo">Limpar histórico</button>
       </div>
       <div id="hist-arvore" class="hist-arvore"></div>
@@ -225,7 +223,7 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
       </div>
 
       <div class="card config-card">
-        <h2>Cupom automático <small>(só no ebook PRINCIPAL, via API)</small></h2>
+        <h2>Cupom automático <small>(só no ebook PRINCIPAL — o robô cria clicando na tela de Cupons)</small></h2>
         <label class="robo-ensaio" style="margin-bottom:12px">
           <input type="checkbox" id="cfg-cupom-ativo"> Criar cupom automaticamente após publicar o Principal
         </label>
@@ -239,26 +237,7 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
             <input id="cfg-cupom-desconto" type="number" min="1" max="98">
           </div>
         </div>
-        <small>Precisa das credenciais da API abaixo. O cupom é criado no produto assim que o robô finaliza o cadastro.</small>
-      </div>
-
-      <div class="card config-card">
-        <h2>API da Hotmart <small>(credenciais — developers.hotmart.com)</small></h2>
-        <div class="campo-duplo">
-          <div class="campo">
-            <label>Client ID</label>
-            <input id="cfg-hapi-id" type="text" spellcheck="false">
-          </div>
-          <div class="campo">
-            <label>Client Secret</label>
-            <input id="cfg-hapi-secret" type="password" spellcheck="false">
-          </div>
-        </div>
-        <small>Se criam em <b>developers.hotmart.com → Minhas credenciais → Criar credencial</b>, logado na MESMA conta que publica os produtos.</small>
-        <div class="pub-acao" style="margin-top:10px">
-          <button id="btn-testar-hapi" class="btn mini">🔌 Testar conexão</button>
-          <span id="hapi-feedback"></span>
-        </div>
+        <small>Depois de finalizar o cadastro do Principal, o robô abre o menu Cupons do produto, cria o cupom e confere que ele apareceu na lista.</small>
       </div>
 
       <div class="card config-card">

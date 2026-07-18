@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core import agy, config, cupons, dialogo, historico, hotmart_api, idiomas, produtos, robo, scanner, textos, titulos, updater
+from core import agy, config, dialogo, historico, idiomas, produtos, robo, scanner, textos, titulos, updater
 
 PASTA_WEB = Path(__file__).resolve().parent / "web"
 
@@ -131,33 +131,6 @@ def settings_salvar(body: dict):
             atual[k] = v
     config.salvar_settings(atual)
     return atual
-
-
-@app.post("/api/hotmart-api/testar")
-def hotmart_api_testar():
-    """Valida as credenciais da API da Hotmart (Config) sem publicar nada."""
-    s = config.carregar_settings()
-    api = s.get("hotmart_api", {})
-    hotmart_api.limpar_cache_token()  # forca autenticacao de verdade (sem cache)
-    try:
-        hotmart_api.obter_token(api.get("client_id", ""), api.get("client_secret", ""))
-        return {"ok": True}
-    except hotmart_api.HotmartApiError as e:
-        return {"ok": False, "erro": str(e)}
-
-
-@app.get("/api/cupons-pendentes")
-def cupons_pendentes_listar():
-    return {"pendentes": cupons.listar(), "total": len(cupons.listar())}
-
-
-@app.post("/api/cupons-pendentes/tentar")
-def cupons_pendentes_tentar():
-    """Tenta criar todos os cupons pendentes agora (produtos já aprovados passam)."""
-    s = config.carregar_settings()
-    api = s.get("hotmart_api", {})
-    resultado = cupons.tentar_todos(api.get("client_id", ""), api.get("client_secret", ""))
-    return resultado
 
 
 @app.get("/api/idiomas")

@@ -1,5 +1,5 @@
 {
-  "version": 61,
+  "version": 62,
   "files": [
     "README.md",
     "app/__init__.py",
@@ -11,11 +11,9 @@
     "core/__init__.py",
     "core/agy.py",
     "core/config.py",
-    "core/cupons.py",
     "core/dialogo.py",
     "core/gmail_code.py",
     "core/historico.py",
-    "core/hotmart_api.py",
     "core/hotmart_map.py",
     "core/idiomas.py",
     "core/llm.py",

@@ -23,9 +23,8 @@ _DEFAULTS = {
     # 2º coprodutor (opcional) — convidado DEPOIS do 1º, com intervalo de 40s
     # pra não misturar os códigos 2FA no Gmail
     "coproducao2": {"email": "", "percentual": 45},
-    # credenciais da API oficial (developers.hotmart.com > Credenciais)
-    "hotmart_api": {"client_id": "", "client_secret": ""},
-    # cupom automático criado no ebook PRINCIPAL após publicar (via API)
+    # cupom automático no ebook PRINCIPAL após publicar — o robô cria CLICANDO
+    # na tela de Cupons do produto (a API oficial de cupom é bugada)
     "cupom": {"ativo": False, "codigo": "", "desconto": 10},
     # Leitura automatica do codigo 2FA no Gmail (IMAP + App Password)
     "gmail": {"email": "", "app_password": "", "auto": False},

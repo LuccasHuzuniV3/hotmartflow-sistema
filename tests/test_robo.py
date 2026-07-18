@@ -11,9 +11,7 @@ from core import produtos, robo  # noqa: E402 (env precisa vir antes)
 
 @pytest.fixture(autouse=True)
 def ambiente(tmp_path, monkeypatch):
-    from core import cupons as _cupons
     monkeypatch.setattr(produtos, "PASTA_PRODUTOS", tmp_path / "produtos")
-    monkeypatch.setattr(_cupons, "ARQUIVO", tmp_path / "cupons_pendentes.jsonl")
     # zera o job global entre testes
     robo._JOB = None
     yield
@@ -297,91 +295,54 @@ def test_escolher_opcao_clica_rapido_quando_opcao_visivel(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Cupom automático pós-publicação (só Principal, best-effort)
+# Cupom pela UI (clicando na tela de Cupons) — só é sucesso se aparecer na lista
 # ---------------------------------------------------------------------------
-def _job_publicado(hotmart_id="8108732"):
-    job = robo.Job({"id": "p", "titulo_pt": "X"},
-                   {"titulo": "T", "descricao": "D", "codigo": "de", "pais": "Alemao"}, "real")
-    job.hotmart_id = hotmart_id
-    return job
+class _TelaCupomFake:
+    """Stub mínimo pra exercitar Tela.criar_cupom_ui sem navegador."""
+    def __init__(self, cupom_aparece_na_lista=True):
+        self.cupom_aparece = cupom_aparece_na_lista
+        self.acoes: list[str] = []
+        import types
+        self.page = types.SimpleNamespace(wait_for_timeout=lambda ms: None)
+        self.job = types.SimpleNamespace(log=lambda *a, **k: None)
+
+    def clicar(self, chave, timeout=0):
+        self.acoes.append(f"clicar:{chave}")
+
+    def preencher(self, chave, valor):
+        self.acoes.append(f"preencher:{chave}={valor}")
+
+    def shot(self, nome):
+        pass
+
+    def existe_texto(self, texto, timeout=0):
+        return self.cupom_aparece
 
 
-SETTINGS_CUPOM = {
-    "cupom": {"ativo": True, "codigo": "PROMO10", "desconto": 10},
-    "hotmart_api": {"client_id": "id1", "client_secret": "sec1"},
-}
+def test_criar_cupom_ui_fluxo_completo():
+    fake = _TelaCupomFake(cupom_aparece_na_lista=True)
+    robo.Tela.criar_cupom_ui(fake, "25OFF", 25)
+    assert fake.acoes == [
+        "clicar:menu_cupons",
+        "clicar:btn_criar_cupom",
+        "preencher:campo_cupom_codigo=25OFF",
+        # #percentage e money-input: 25% vira digitos "2500" -> exibe "25,00"
+        "preencher:campo_cupom_desconto=2500",
+        "clicar:btn_salvar_cupom",
+    ]
 
 
-def test_cupom_criado_no_principal(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
-                        lambda **kw: chamadas.append(kw) or {})
-    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Principal"}, SETTINGS_CUPOM)
-    assert len(chamadas) == 1
-    assert chamadas[0]["product_id"] == "8108732"
-    assert chamadas[0]["codigo"] == "PROMO10"
-    assert chamadas[0]["desconto_pct"] == 10.0
+def test_criar_cupom_ui_erro_se_nao_aparece_na_lista():
+    fake = _TelaCupomFake(cupom_aparece_na_lista=False)
+    with pytest.raises(robo.RoboError, match="não apareceu na lista"):
+        robo.Tela.criar_cupom_ui(fake, "25OFF", 25)
 
 
-def test_cupom_nao_criado_em_bump_upsell(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
-                        lambda **kw: chamadas.append(kw) or {})
-    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Order Bump"}, SETTINGS_CUPOM)
-    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Upsell"}, SETTINGS_CUPOM)
-    assert chamadas == []  # cupom é SÓ pro Principal
-
-
-def test_cupom_desligado_nao_chama_api(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
-                        lambda **kw: chamadas.append(kw) or {})
-    s = {**SETTINGS_CUPOM, "cupom": {"ativo": False, "codigo": "PROMO10", "desconto": 10}}
-    robo._criar_cupom_pos_publicacao(_job_publicado(), {"tipo": "Principal"}, s)
-    assert chamadas == []
-
-
-def test_cupom_falha_vira_aviso_e_entra_na_fila_de_pendentes(monkeypatch):
-    from core import cupons as _cupons
-
-    def explode(**kw):
-        raise robo.hotmart_api.HotmartApiError("HTTP 400: em análise")
-
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom", explode)
-    job = _job_publicado()
-    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)  # nao levanta
-    assert any("Cupom" in m["texto"] and m["nivel"] == "aviso" for m in job.mensagens)
-    # ficou guardado pra retentar depois
-    pendentes = _cupons.listar()
-    assert len(pendentes) == 1
-    assert pendentes[0]["product_id"] == "8108732"
-    assert pendentes[0]["codigo"] == "PROMO10"
-
-
-def test_publicacao_retenta_cupons_pendentes_de_antes(monkeypatch):
-    from core import cupons as _cupons
-    # produto ANTIGO ficou pendente; agora a Hotmart aceita
-    _cupons.registrar(product_id="7000001", codigo="PROMO10", desconto_pct=10,
-                      pais="Italia")
-    criados = []
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
-                        lambda **kw: criados.append(kw["product_id"]) or {})
-    job = _job_publicado(hotmart_id="8000002")
-    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)
-    # criou o pendente antigo E o do produto novo; fila esvaziou
-    assert criados == ["7000001", "8000002"]
-    assert _cupons.listar() == []
-    assert any("Cupom pendente criado" in m["texto"] for m in job.mensagens)
-
-
-def test_cupom_sem_hotmart_id_avisa_e_pula(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(robo.hotmart_api, "criar_cupom",
-                        lambda **kw: chamadas.append(kw) or {})
-    job = _job_publicado(hotmart_id="")
-    robo._criar_cupom_pos_publicacao(job, {"tipo": "Principal"}, SETTINGS_CUPOM)
-    assert chamadas == []
-    assert any("ID do produto" in m["texto"] for m in job.mensagens)
+def test_criar_cupom_ui_codigo_vazio_erro():
+    fake = _TelaCupomFake()
+    with pytest.raises(robo.RoboError, match="vazio"):
+        robo.Tela.criar_cupom_ui(fake, "  ", 25)
+    assert fake.acoes == []  # nem começou a clicar
 
 
 # ---------------------------------------------------------------------------
