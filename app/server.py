@@ -151,6 +151,45 @@ def historico_limpar():
     return {"ok": True, "removidos": historico.remover_tudo()}
 
 
+@app.post("/api/historico/recuperar")
+def historico_recuperar():
+    """Recupera o histórico depois de um 'Limpar' acidental:
+    1) restaura o backup mais recente (o Limpar agora só renomeia);
+    2) completa RECONSTRUINDO da fila — todo idioma com status 'publicado'
+       vira um registro (a data vem da pasta de prints da publicação)."""
+    do_backup = historico.restaurar_ultimo_backup()
+
+    existentes = {(r.get("rede"), r.get("pais"), r.get("titulo"), r.get("tipo"))
+                  for r in historico.listar()}
+    reconstruidos = 0
+    for p in produtos.listar():
+        rede = Path(p.get("pasta", "")).name or p.get("pasta", "")
+        tipo = p["tipo"]
+        if p.get("numero"):
+            tipo = f"{tipo} {p['numero']}"
+        for item in p["idiomas"]:
+            if item.get("status") != "publicado":
+                continue
+            titulo = item.get("titulo") or p["titulo_pt"]
+            chave = (rede, item["pais"], titulo, tipo)
+            if chave in existentes:
+                continue
+            quando = None
+            try:  # data real: quando a pasta de prints daquela publicação foi criada
+                pasta_pub = robo.PASTA_PUBLICACOES / p["id"] / item["codigo"]
+                if pasta_pub.is_dir():
+                    from datetime import datetime as _dt
+                    quando = _dt.fromtimestamp(pasta_pub.stat().st_mtime).isoformat(timespec="seconds")
+            except OSError:
+                pass
+            historico.registrar(rede=rede, pais=item["pais"], titulo=titulo,
+                                tipo=tipo, hotmart_id="", quando=quando)
+            existentes.add(chave)
+            reconstruidos += 1
+    return {"do_backup": do_backup, "reconstruidos": reconstruidos,
+            "total": len(historico.listar())}
+
+
 # ---------------------------------------------------------------------------
 # Auto-atualizacao (baixa a versao nova do GitHub)
 # ---------------------------------------------------------------------------

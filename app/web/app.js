@@ -128,12 +128,29 @@ async function carregarHistorico() {
 
 $("btn-hist-atualizar").addEventListener("click", carregarHistorico);
 $("btn-hist-limpar").addEventListener("click", async () => {
-  if (!confirm("Limpar TODO o histórico de publicações?\n(Isso não desfaz nada na Hotmart — só apaga o registro aqui.)")) return;
+  if (!confirm("Limpar TODO o histórico de publicações?\n(Vira um backup — dá pra voltar pelo botão ♻️ Recuperar. Nada muda na Hotmart.)")) return;
   try {
     const r = await api("DELETE", "/api/historico");
-    toast(`${r.removidos} registro(s) apagados.`, "ok");
+    toast(`${r.removidos} registro(s) movidos pro backup (♻️ Recuperar traz de volta).`, "ok");
     carregarHistorico();
   } catch (e) { toast(e.message, "erro"); }
+});
+
+$("btn-hist-recuperar").addEventListener("click", async () => {
+  const btn = $("btn-hist-recuperar");
+  btn.disabled = true;
+  try {
+    const r = await api("POST", "/api/historico/recuperar");
+    const partes = [];
+    if (r.do_backup) partes.push(`${r.do_backup} do backup`);
+    if (r.reconstruidos) partes.push(`${r.reconstruidos} reconstruído(s) da fila`);
+    toast(partes.length
+      ? `Histórico recuperado: ${partes.join(" + ")} ✓ (total ${r.total})`
+      : "Nada pra recuperar — sem backup e sem publicados na fila.",
+      partes.length ? "ok" : "");
+    carregarHistorico();
+  } catch (e) { toast(e.message, "erro"); }
+  finally { btn.disabled = false; }
 });
 
 // ---------------------------------------------------------------------------

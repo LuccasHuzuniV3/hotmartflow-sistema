@@ -50,6 +50,35 @@ def test_remover_tudo():
     assert historico.listar() == []
 
 
+def test_remover_tudo_vira_backup_e_recuperar_traz_de_volta(arquivo_isolado):
+    historico.registrar(rede="R", pais="Brasil", titulo="T", tipo="Principal")
+    historico.registrar(rede="R", pais="Ingles", titulo="T2", tipo="Upsell 1")
+    historico.remover_tudo()
+    assert historico.listar() == []                       # some da tela...
+    backups = list(arquivo_isolado.glob("historico-backup-*.jsonl"))
+    assert len(backups) == 1                              # ...mas virou backup
+
+    voltaram = historico.restaurar_ultimo_backup()
+    assert voltaram == 2
+    titulos = {r["titulo"] for r in historico.listar()}
+    assert titulos == {"T", "T2"}
+
+
+def test_restaurar_backup_nao_duplica_registros_existentes():
+    historico.registrar(rede="R", pais="Brasil", titulo="T", tipo="Principal")
+    historico.remover_tudo()
+    # depois do limpar, um novo registro identico foi criado de novo
+    historico.restaurar_ultimo_backup()
+    assert len(historico.listar()) == 1
+    # restaurar de novo nao duplica
+    assert historico.restaurar_ultimo_backup() == 0
+    assert len(historico.listar()) == 1
+
+
+def test_restaurar_sem_backup_retorna_zero():
+    assert historico.restaurar_ultimo_backup() == 0
+
+
 def test_linha_corrompida_nao_derruba():
     historico.ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
     historico.ARQUIVO.write_text('{"rede":"R","pais":"Brasil","titulo":"ok","tipo":"Principal"}\nLIXO\n',

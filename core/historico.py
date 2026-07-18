@@ -36,11 +36,15 @@ def registrar(*, rede: str, pais: str, titulo: str, tipo: str,
 
 
 def listar() -> list[dict]:
-    if not ARQUIVO.is_file():
+    return _parse(ARQUIVO)
+
+
+def _parse(arquivo: Path) -> list[dict]:
+    if not arquivo.is_file():
         return []
     out: list[dict] = []
     try:
-        linhas = ARQUIVO.read_text(encoding="utf-8").splitlines()
+        linhas = arquivo.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
     for linha in linhas:
@@ -63,9 +67,30 @@ def agrupado() -> dict:
 
 
 def remover_tudo() -> int:
-    """Limpa o histórico inteiro. Retorna quantos registros havia."""
+    """'Limpa' o histórico movendo o arquivo pra um BACKUP datado — nada é
+    apagado de verdade (recuperável pelo botão Recuperar). Retorna quantos havia."""
     with _TRAVA:
         n = len(listar())
         if ARQUIVO.is_file():
-            ARQUIVO.unlink()
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ARQUIVO.rename(ARQUIVO.with_name(f"historico-backup-{stamp}.jsonl"))
         return n
+
+
+def restaurar_ultimo_backup() -> int:
+    """Traz de volta o backup mais recente feito pelo 'Limpar histórico',
+    juntando com o que existir hoje (sem duplicar). Retorna quantos voltaram."""
+    with _TRAVA:
+        backups = sorted(ARQUIVO.parent.glob("historico-backup-*.jsonl"))
+        if not backups:
+            return 0
+        atuais = _parse(ARQUIVO)
+        vistos = {json.dumps(r, sort_keys=True, ensure_ascii=False) for r in atuais}
+        novos = [r for r in _parse(backups[-1])
+                 if json.dumps(r, sort_keys=True, ensure_ascii=False) not in vistos]
+        if novos:
+            ARQUIVO.parent.mkdir(parents=True, exist_ok=True)
+            with open(ARQUIVO, "a", encoding="utf-8") as f:
+                for r in novos:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        return len(novos)

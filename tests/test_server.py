@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import time
 
 from app.server import app
-from core import agy, config, dialogo, produtos, robo, textos
+from core import agy, config, dialogo, historico, produtos, robo, textos
 
 
 @pytest.fixture(autouse=True)
@@ -15,6 +15,8 @@ def ambiente_isolado(tmp_path, monkeypatch):
     monkeypatch.setattr(produtos, "PASTA_PRODUTOS", tmp_path / "produtos")
     monkeypatch.setattr(config, "ARQUIVO_SETTINGS", tmp_path / "settings.json")
     monkeypatch.setattr(config, "PASTA_CONFIG", tmp_path)
+    monkeypatch.setattr(historico, "ARQUIVO", tmp_path / "historico.jsonl")
+    monkeypatch.setattr(robo, "PASTA_PUBLICACOES", tmp_path / "publicacoes")
     return tmp_path
 
 
@@ -363,6 +365,39 @@ def test_bonus_recebe_titulo_pt_no_aplicar_e_traduzido_no_traduzir(cliente, tmp_
     por_num2 = {a["numero"]: a["titulo"] for a in it2["anexos"]}
     assert por_num2[1] == "OS 10 HABITOS IT"
     assert por_num2[2] == "O SEGREDO DA ENERGIA IT"
+
+
+# ---------------------------------------------------------------------------
+# Histórico — recuperação após 'Limpar' acidental
+# ---------------------------------------------------------------------------
+def test_historico_recuperar_reconstroi_da_fila(cliente, pasta_ebooks):
+    prods = importar(cliente, pasta_ebooks)
+    pid = next(p for p in prods if p["tipo"] == "Principal")["id"]
+    # simula: Brasil foi publicado (status na fila), mas o histórico sumiu
+    produtos.atualizar_item(pid, "pt-br", {"titulo": "Título BR", "status": "publicado"})
+    assert cliente.get("/api/historico").json()["total"] == 0
+
+    r = cliente.post("/api/historico/recuperar")
+    assert r.status_code == 200
+    assert r.json()["reconstruidos"] == 1
+
+    arv = cliente.get("/api/historico").json()["arvore"]
+    reg = arv["ebooks"]["Brasil"][0]          # rede = nome da pasta de origem
+    assert reg["titulo"] == "Título BR"
+    assert reg["tipo"] == "Principal"
+
+    # idempotente: rodar de novo não duplica
+    assert cliente.post("/api/historico/recuperar").json()["reconstruidos"] == 0
+    assert cliente.get("/api/historico").json()["total"] == 1
+
+
+def test_historico_limpar_e_recuperar_do_backup(cliente):
+    historico.registrar(rede="R", pais="Brasil", titulo="T", tipo="Upsell 1")
+    cliente.delete("/api/historico")
+    assert cliente.get("/api/historico").json()["total"] == 0
+    r = cliente.post("/api/historico/recuperar")
+    assert r.json()["do_backup"] == 1
+    assert cliente.get("/api/historico").json()["total"] == 1
 
 
 # ---------------------------------------------------------------------------

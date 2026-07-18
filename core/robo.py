@@ -1129,7 +1129,24 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
                             "entrado como Pendente mesmo assim (confira depois). Seguindo em frente.", "aviso")
 
-            # ---- 7. finalizar (direto, sem pausa) ---------------------------
+            # ---- 7. cupom no PRINCIPAL — ANTES de finalizar (depois de enviar
+            # pra análise a tela pode travar a criação). Best-effort: se falhar,
+            # vira aviso com print e o fluxo segue pro finalizar mesmo assim.
+            c_cfg = s.get("cupom", {})
+            if c_cfg.get("ativo") and produto.get("tipo") == "Principal":
+                try:
+                    job.marcar_etapa("cupom",
+                                     f"Criando cupom '{c_cfg.get('codigo')}' ({c_cfg.get('desconto')}%) na tela de Cupons...")
+                    tela.criar_cupom_ui(str(c_cfg.get("codigo") or ""),
+                                        int(float(c_cfg.get("desconto", 10) or 10)))
+                    job.log(f"Cupom '{c_cfg.get('codigo')}' criado e conferido na lista ✔", "ok")
+                except Exception as e:
+                    tela.shot("erro_cupom")
+                    job.log(f"Cupom: não consegui criar clicando ({str(e)[:150]}) — "
+                            "seguindo pro Finalizar mesmo assim; crie o cupom na mão e "
+                            "me mande o print da tela pra eu calibrar.", "aviso")
+
+            # ---- 8. finalizar (direto, sem pausa) ---------------------------
             job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")
             tela.clicar("menu_painel")
             page.wait_for_timeout(2000)
@@ -1147,23 +1164,6 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 )
             job.log("Cadastro finalizado — enviado para aprovação ✔", "ok")
             tela.shot("finalizado")
-
-            # ---- 8. cupom no PRINCIPAL — clicando na tela (a API é bugada) ----
-            # best-effort: o produto JA esta publicado; se o cupom falhar, vira
-            # aviso com print pra calibrar, nunca derruba a publicacao.
-            c_cfg = s.get("cupom", {})
-            if c_cfg.get("ativo") and produto.get("tipo") == "Principal":
-                try:
-                    job.marcar_etapa("cupom",
-                                     f"Criando cupom '{c_cfg.get('codigo')}' ({c_cfg.get('desconto')}%) na tela de Cupons...")
-                    tela.criar_cupom_ui(str(c_cfg.get("codigo") or ""),
-                                        int(float(c_cfg.get("desconto", 10) or 10)))
-                    job.log(f"Cupom '{c_cfg.get('codigo')}' criado e conferido na lista ✔", "ok")
-                except Exception as e:
-                    tela.shot("erro_cupom")
-                    job.log(f"Cupom: não consegui criar clicando ({str(e)[:150]}) — o produto "
-                            "foi publicado normalmente. Me mande o print da tela de criar "
-                            "cupom pra eu calibrar os seletores.", "aviso")
 
             # ---- medição: onde o tempo foi gasto (aparece no painel e em arquivo) ----
             resumo = job.resumo_tempos()
