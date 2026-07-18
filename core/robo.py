@@ -1362,6 +1362,13 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
                 page.wait_for_timeout(800)
                 tela.preencher("ck_busca", bump["titulo"], delay=DELAY_CK)
                 page.wait_for_timeout(1500)
+                # o resultado vem RECOLHIDO (accordion) — expande o card antes
+                # do radio "Preço base" existir na tela
+                try:
+                    tela.clicar_por_texto(bump["titulo"][:60], exato=False, timeout=8000)
+                except RoboError:
+                    tela.clicar("ck_card_resultado", timeout=5000)  # fallback: 1o card
+                page.wait_for_timeout(800)
                 tela.clicar("ck_radio_preco_base", timeout=10000)  # oferta "Preço base"
                 tela.clicar("ck_btn_selecionar", timeout=8000)
                 page.wait_for_timeout(800)

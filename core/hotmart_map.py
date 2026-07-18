@@ -352,6 +352,9 @@ MAPA = {
     "ck_btn_escolher_produto": [
         {"tipo": "role", "role": "button", "nome": "Escolher produto"},
     ],
+    "ck_card_resultado": [              # card do resultado da busca (accordion)
+        {"tipo": "css", "css": "div.hot-collapse__item"},
+    ],
     "ck_radio_preco_base": [
         {"tipo": "css", "css": "input[id^='option-']"},
         {"tipo": "label", "texto": "Preço base"},
