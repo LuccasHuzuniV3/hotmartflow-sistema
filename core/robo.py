@@ -624,6 +624,75 @@ class Tela:
         except Exception:
             return False
 
+    def _campo_valor(self, chave: str, timeout: int = 3000) -> str:
+        """Lê o input_value do campo (página + iframes) SEM screenshot de erro —
+        usado pra saber se o form veio 'sujo' de um produto anterior."""
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for c in hm.MAPA[chave]:
+                for ctx in self._contextos():
+                    try:
+                        loc = self._loc_no_ctx(ctx, c).first
+                        if loc.is_visible():
+                            return loc.input_value() or ""
+                    except Exception:
+                        continue
+            if time.time() >= fim:
+                return ""
+            self.page.wait_for_timeout(300)
+
+    def abrir_ebook_novo_limpo(self, tentativas: int = 3) -> None:
+        """Abre o formulário de eBook novo GARANTINDO que ele venha VAZIO.
+
+        Entre produtos a MESMA aba do Chrome é reaproveitada. Um produto que
+        errou (ex.: no preço) deixa o form preenchido, e a SPA da Hotmart NÃO
+        reseta os campos numa navegação pra mesma rota — então o próximo produto
+        herdaria os dados do anterior e cairia no mesmo erro (a cascata). Aqui a
+        gente navega, resolve login e, se o Nome vier preenchido, RECARREGA a
+        página (reload de verdade remonta a SPA do zero) até zerar."""
+        for tentativa in range(1, tentativas + 1):
+            self.page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
+            self.page.wait_for_timeout(1500)
+            # rede de seguranca: caiu no login? tenta entrar (dados ja preenchidos)
+            if any(m in self.page.url for m in hm.MARCADORES_LOGIN):
+                self.job.log("Caiu na tela de login — tentando entrar (dados já preenchidos)...", "aviso")
+                try:
+                    self.clicar("btn_entrar_login")
+                    self.page.wait_for_timeout(4000)
+                    self.page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
+                    self.page.wait_for_timeout(2500)
+                except RoboError:
+                    pass
+            if any(m in self.page.url for m in hm.MARCADORES_LOGIN):
+                self.shot("erro_login")
+                raise RoboError(
+                    "Ainda está na tela de login. Vá na janela do robô (já aberta), "
+                    "faça o login na Hotmart e clique publicar de novo."
+                )
+            try:
+                self.page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(1200)
+            # Nome vazio = form limpo, pode seguir
+            if not self._campo_valor("campo_nome", timeout=4000).strip():
+                return
+            # form SUJO (herdado do produto anterior) -> reload de verdade
+            self.job.log(f"Formulário veio preenchido do produto anterior — "
+                         f"recarregando limpo (tentativa {tentativa}/{tentativas})...", "aviso")
+            try:
+                self.page.reload(wait_until="domcontentloaded")
+            except Exception:
+                pass
+            self.page.wait_for_timeout(2500)
+        # ultimo recurso: ainda sujo depois dos reloads -> limpa os campos na mao
+        self.job.log("Form ainda preenchido após recarregar — limpando os campos na mão.", "aviso")
+        for chave in ("campo_nome", "campo_descricao"):
+            try:
+                self._localizar(chave, timeout=4000).fill("")
+            except Exception:
+                pass
+
     def selecionar_club_com_espaco(self, limite: int = 300) -> None:
         """Na 'Área de Membros', le o nº de produtos de cada Club e clica no que
         tem MENOS que o limite (com espaço) — o Club cheio (300) fica de fora.
@@ -1067,37 +1136,15 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             delay_dig = int(s.get("robo", {}).get("delay_digitacao_ms", _DELAY_DIGITACAO))
             tela = Tela(page, job, pasta_shots, delay_digitacao=delay_dig)
 
-            # ---- 1. abrir direto o formulario de eBook novo + checar login ----
-            job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo na Hotmart...")
-            page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
-            page.wait_for_timeout(1500)
-            # rede de seguranca: se caiu no login (com dados ja preenchidos), entra sozinho
-            if any(m in page.url for m in hm.MARCADORES_LOGIN):
-                job.log("Caiu na tela de login — tentando entrar (dados já preenchidos)...", "aviso")
-                try:
-                    tela.clicar("btn_entrar_login")
-                    page.wait_for_timeout(4000)
-                    page.goto(hm.URL_CRIAR_EBOOK, wait_until="domcontentloaded")
-                    page.wait_for_timeout(2500)
-                except RoboError:
-                    pass
-            if any(m in page.url for m in hm.MARCADORES_LOGIN):
-                tela.shot("erro_login")
-                raise RoboError(
-                    "Ainda está na tela de login. Vá na janela do robô (já aberta), "
-                    "faça o login na Hotmart e clique publicar de novo."
-                )
+            # ---- 1. abrir o formulario de eBook novo, LIMPO + checar login ----
+            # (garante form vazio: um produto que errou nao contamina o proximo)
+            job.marcar_etapa("abrir", "Abrindo o formulário de eBook novo (limpo)...")
+            tela.abrir_ebook_novo_limpo()
             tela.shot("inicio")
 
-            # ---- 2. informacoes basicas (ja estamos nela) ------------------
+            # ---- 2. informacoes basicas (ja estamos nela, e vazia) ---------
             job.marcar_etapa("informacoes_basicas", "Preenchendo informações básicas...")
-            # espera a SPA terminar de carregar ANTES de digitar (senao a Hotmart
-            # 'reseta' o form logo apos o 1o campo e apaga o Nome).
-            try:
-                page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(500)
             tela.preencher("campo_nome", item["titulo"])
             tela.preencher("campo_descricao", item["descricao"])
             idioma_txt = hm.idioma_hotmart(item["codigo"])
@@ -1134,6 +1181,16 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
 
             tela.clicar("btn_avancar_basico")
             page.wait_for_timeout(2500)   # troca de tela (basico -> preco)
+            # confirma que CHEGOU no preço (campo_moeda visível). Se não, o
+            # 'Avançar' não pegou (SPA lenta após muitos produtos) — reclica antes
+            # de tentar o dólar, senão dá "não acha o dólar" na tela errada.
+            if not tela._elemento_visivel("campo_moeda", timeout=5000):
+                job.log("A tela de preço não abriu — clicando 'Avançar' de novo...", "aviso")
+                try:
+                    tela.clicar("btn_avancar_basico", timeout=6000)
+                except RoboError:
+                    pass
+                page.wait_for_timeout(2500)
 
             # ---- 4. preco ---------------------------------------------------
             # Regra: todos em Dolar, SO o Brasil em Real.

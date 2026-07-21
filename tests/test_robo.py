@@ -114,6 +114,82 @@ def test_preparar_uploads_preserva_extensao_e_nome_vazio(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Form LIMPO entre produtos — um erro não pode contaminar o próximo (cascata)
+# ---------------------------------------------------------------------------
+class _PageFake:
+    def __init__(self, url="https://app.hotmart.com/products/add/4/info"):
+        self.url = url
+        self.gotos = 0
+        self.reloads = 0
+
+    def goto(self, url, wait_until=None):
+        self.gotos += 1
+
+    def reload(self, wait_until=None):
+        self.reloads += 1
+
+    def wait_for_timeout(self, ms):
+        pass
+
+    def wait_for_load_state(self, state, timeout=0):
+        pass
+
+
+class _TelaAbrirFake:
+    def __init__(self, valores_nome, url="https://app.hotmart.com/products/add/4/info"):
+        self._valores = list(valores_nome)  # retornos de _campo_valor, em ordem
+        self.page = _PageFake(url)
+        import types
+        self.job = types.SimpleNamespace(log=lambda *a, **k: None)
+        self.limpou = []
+
+    def clicar(self, chave, timeout=0):
+        pass
+
+    def shot(self, nome):
+        pass
+
+    def _campo_valor(self, chave, timeout=0):
+        return self._valores.pop(0) if self._valores else ""
+
+    def _localizar(self, chave, timeout=0):
+        tela = self
+
+        class _F:
+            def fill(self, v):
+                tela.limpou.append(chave)
+        return _F()
+
+
+def test_form_limpo_de_primeira_nao_recarrega():
+    fake = _TelaAbrirFake([""])  # Nome já vem vazio
+    robo.Tela.abrir_ebook_novo_limpo(fake)
+    assert fake.page.gotos == 1
+    assert fake.page.reloads == 0
+
+
+def test_form_sujo_recarrega_ate_zerar():
+    # herdou "Título Velho" do produto anterior; após 1 reload vem limpo
+    fake = _TelaAbrirFake(["Título Velho", ""])
+    robo.Tela.abrir_ebook_novo_limpo(fake)
+    assert fake.page.reloads == 1
+    assert fake.limpou == []  # não precisou do fallback manual
+
+
+def test_form_teimoso_cai_pro_limpar_na_mao():
+    fake = _TelaAbrirFake(["sujo", "sujo", "sujo"])  # nunca zera
+    robo.Tela.abrir_ebook_novo_limpo(fake, tentativas=3)
+    assert fake.page.reloads == 3
+    assert fake.limpou == ["campo_nome", "campo_descricao"]  # último recurso
+
+
+def test_form_limpo_na_tela_de_login_levanta_erro():
+    fake = _TelaAbrirFake([""], url="https://sso.hotmart.com/login")
+    with pytest.raises(robo.RoboError, match="login"):
+        robo.Tela.abrir_ebook_novo_limpo(fake)
+
+
+# ---------------------------------------------------------------------------
 # Finalizar cadastro — SÓ é sucesso se a Hotmart confirmar (nunca mente sucesso)
 # ---------------------------------------------------------------------------
 class _BtnFake:
