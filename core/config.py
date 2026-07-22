@@ -13,10 +13,10 @@ _DEFAULTS = {
     "provider": "agy",  # "agy" (Antigravity CLI, igual EbookFlow) ou "openai"
     "agy": {"model": "Gemini 3.5 Flash (Low)"},  # mais barato/rapido p/ traduzir
     "openai": {"api_key": "", "model": "gpt-4o"},
-    # tabela INTERNACIONAL (USD) — todos os países MENOS o Brasil
-    "precos": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
-    # tabela do BRASIL (BRL) — separada; o Brasil NÃO puxa da internacional
-    "precos_brasil": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},
+    # preços por MOEDA — o robô escolhe a tabela pela moeda do país:
+    "precos": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},         # USD (Inglês, Espanha, Rússia, Coreia)
+    "precos_eur": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},     # EUR (Alemanha, França... e o resto)
+    "precos_brasil": {"Principal": 19.90, "Order Bump": 12.90, "Upsell": 15.90},  # BRL (só Brasil)
     "moeda": "USD",
     "hotmart": {"categoria": "Espiritualidade", "reembolso_dias": 7},
     "coproducao": {"email": "", "percentual": 45},
@@ -51,6 +51,10 @@ def carregar_settings() -> dict:
         return _deep_copy(_DEFAULTS)
     with open(ARQUIVO_SETTINGS, "r", encoding="utf-8") as f:
         dados = json.load(f)
+    # migração: separamos USD e EUR. Se o euro ainda não existe no arquivo do
+    # usuário, começa IGUAL ao dólar (preserva o preço que já estava valendo).
+    if "precos_eur" not in dados and isinstance(dados.get("precos"), dict):
+        dados["precos_eur"] = _deep_copy(dados["precos"])
     merged = _deep_copy(_DEFAULTS)
     for k, v in dados.items():
         if isinstance(v, dict) and isinstance(merged.get(k), dict):

@@ -296,7 +296,8 @@ def produtos_importar(body: ImportarIn):
     if not selecionados:
         _erro("Nenhum grupo pra importar — confira a pasta e a convencao de nomes.")
     criados = [produtos.criar(g, pasta_origem=body.pasta, precos=s["precos"],
-                              precos_brasil=s["precos_brasil"]) for g in selecionados]
+                              precos_brasil=s["precos_brasil"], precos_eur=s["precos_eur"])
+               for g in selecionados]
     return {"criados": criados}
 
 

@@ -271,6 +271,13 @@ async function carregarConfig() {
       <input type="number" step="0.10" min="0" data-preco-tipo="${esc(tipo)}" value="${preco}">
     </div>`).join("");
 
+  const gridEur = $("cfg-precos-eur");
+  gridEur.innerHTML = Object.entries(s.precos_eur || {}).map(([tipo, preco]) => `
+    <div class="campo">
+      <label>${esc(tipo)}</label>
+      <input type="number" step="0.10" min="0" data-preco-eur-tipo="${esc(tipo)}" value="${preco}">
+    </div>`).join("");
+
   const gridBr = $("cfg-precos-brasil");
   gridBr.innerHTML = Object.entries(s.precos_brasil || {}).map(([tipo, preco]) => `
     <div class="campo">
@@ -317,6 +324,10 @@ $("btn-salvar-config").addEventListener("click", async () => {
   document.querySelectorAll("[data-preco-tipo]").forEach((inp) => {
     precos[inp.dataset.precoTipo] = parseFloat(inp.value || "0");
   });
+  const precos_eur = {};
+  document.querySelectorAll("[data-preco-eur-tipo]").forEach((inp) => {
+    precos_eur[inp.dataset.precoEurTipo] = parseFloat(inp.value || "0");
+  });
   const precos_brasil = {};
   document.querySelectorAll("[data-preco-br-tipo]").forEach((inp) => {
     precos_brasil[inp.dataset.precoBrTipo] = parseFloat(inp.value || "0");
@@ -326,6 +337,7 @@ $("btn-salvar-config").addEventListener("click", async () => {
     agy: { model: $("cfg-agy-model").value.trim() },
     openai: { api_key: $("cfg-api-key").value.trim(), model: $("cfg-model").value.trim() || "gpt-4o" },
     precos,
+    precos_eur,
     precos_brasil,
     descricao: {
       tom: $("cfg-tom").value.trim(),

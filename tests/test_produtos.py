@@ -59,6 +59,27 @@ def test_criar_sem_tabela_brasil_cai_na_internacional():
     assert all(i["preco"] == 9.90 for i in reg["idiomas"])
 
 
+def test_criar_escolhe_tabela_por_moeda_usd_eur_brl():
+    grupo = {"titulo": "X", "tipo": "Principal", "idiomas": [
+        {"codigo": "pt-br", "pais": "Brasil", "pdf": "a", "capa": None},   # BRL
+        {"codigo": "en", "pais": "Ingles", "pdf": "b", "capa": None},      # USD
+        {"codigo": "de", "pais": "Alemao", "pdf": "c", "capa": None},      # EUR
+    ]}
+    reg = produtos.criar(grupo, pasta_origem="C:/x",
+                         precos={"Principal": 9.90},          # USD
+                         precos_eur={"Principal": 29.90},     # EUR
+                         precos_brasil={"Principal": 19.90})  # BRL
+    por = {i["codigo"]: i["preco"] for i in reg["idiomas"]}
+    assert por["pt-br"] == 19.90 and por["en"] == 9.90 and por["de"] == 29.90
+
+
+def test_criar_sem_tabela_eur_cai_na_usd():
+    grupo = {"titulo": "X", "tipo": "Principal",
+             "idiomas": [{"codigo": "de", "pais": "Alemao", "pdf": "c", "capa": None}]}
+    reg = produtos.criar(grupo, pasta_origem="C:/x", precos={"Principal": 9.90})
+    assert reg["idiomas"][0]["preco"] == 9.90  # EUR sem tabela -> USD (compat)
+
+
 def test_criar_tipo_sem_preco_na_tabela_usa_zero():
     g = grupo_exemplo()
     g["tipo"] = "Bonus"

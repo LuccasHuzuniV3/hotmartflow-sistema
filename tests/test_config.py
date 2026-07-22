@@ -42,10 +42,22 @@ def test_tabela_de_precos_padrao():
     assert s["precos"]["Upsell"] == 15.90
 
 
-def test_tem_tabela_de_precos_do_brasil_separada():
+def test_tem_tres_tabelas_de_preco_usd_eur_brl():
     s = config.carregar_settings()
-    assert s["precos_brasil"]["Principal"] == 19.90
-    assert s["precos_brasil"]["Order Bump"] == 12.90
+    for tabela in ("precos", "precos_eur", "precos_brasil"):
+        assert s[tabela]["Principal"] == 19.90, tabela
+
+
+def test_migracao_seeda_euro_a_partir_do_dolar():
+    # settings antigo só com 'precos' (US$/internacional), SEM 'precos_eur'
+    config.ARQUIVO_SETTINGS.write_text(
+        json.dumps({"precos": {"Principal": 12.90, "Order Bump": 9.90, "Upsell": 15.90}}),
+        encoding="utf-8")
+    s = config.carregar_settings()
+    # euro começa IGUAL ao dólar (preserva o preço que já valia), não o default
+    assert s["precos_eur"]["Principal"] == 12.90
+    assert s["precos_eur"]["Order Bump"] == 9.90
+    assert s["precos"]["Principal"] == 12.90  # dólar preservado
 
 
 def test_tem_segundo_coprodutor_e_cupons_nos_defaults():

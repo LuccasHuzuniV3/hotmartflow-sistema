@@ -71,17 +71,24 @@ def _salvar(registro: dict) -> None:
 # API publica
 # ---------------------------------------------------------------------------
 def criar(grupo: dict, pasta_origem: str, precos: dict,
-          precos_brasil: dict | None = None) -> dict:
+          precos_brasil: dict | None = None, precos_eur: dict | None = None) -> dict:
     """Cria um produto a partir de um grupo do scanner + tabelas de preco por tipo.
 
-    `precos` = tabela INTERNACIONAL (USD), usada em todos os idiomas MENOS o Brasil.
-    `precos_brasil` = tabela do Brasil (BRL), aplicada só ao idioma 'pt-br'. Se não
-    vier, o Brasil cai na tabela internacional (compatibilidade)."""
+    A tabela é escolhida pela MOEDA do país (core.hotmart_map.moeda_do_pais):
+      `precos`        = USD (Inglês, Espanha, Rússia, Coreia)
+      `precos_eur`    = EUR (Alemanha, França... e o resto)
+      `precos_brasil` = BRL (só Brasil)
+    Se `precos_eur`/`precos_brasil` não vierem, caem na tabela USD (compat.)."""
+    from core import hotmart_map as _hm
     tipo = grupo["tipo"]
-    tabela_br = precos_brasil if precos_brasil is not None else precos
+    por_moeda = {
+        "USD": precos,
+        "EUR": precos_eur if precos_eur is not None else precos,
+        "BRL": precos_brasil if precos_brasil is not None else precos,
+    }
 
     def preco_do_idioma(codigo: str) -> float:
-        tabela = tabela_br if codigo == "pt-br" else precos
+        tabela = por_moeda[_hm.moeda_do_pais(codigo)]
         return float(tabela.get(tipo, 0) or 0)
 
     registro = {
