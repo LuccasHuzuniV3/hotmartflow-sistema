@@ -49,6 +49,25 @@ def test_texto_contagem_desconhecido_cai_pro_ingles():
 
 
 # ---------------------------------------------------------------------------
+# Moeda por país: BRL=Brasil, USD={en,es,ru,ko}, EUR=resto
+# ---------------------------------------------------------------------------
+def test_moeda_do_pais():
+    assert hm.moeda_do_pais("pt-br") == "BRL"
+    for c in ("en", "es", "ru", "ko"):
+        assert hm.moeda_do_pais(c) == "USD", c
+    # todo o resto = EUR (inclui os europeus e Filipinas, que o usuário pôs em EUR)
+    for c in ("de", "fr", "it", "fi", "pl", "hu", "ro", "bg", "hr", "el",
+              "nl", "sv", "cs", "sk", "sl", "sr", "fil"):
+        assert hm.moeda_do_pais(c) == "EUR", c
+
+
+def test_todos_os_idiomas_tem_moeda_valida():
+    for info in idiomas.IDIOMAS:
+        assert hm.moeda_do_pais(info["codigo"]) in ("BRL", "USD", "EUR")
+        assert hm.moeda_hotmart(info["codigo"]) in hm.MOEDA_HOTMART.values()
+
+
+# ---------------------------------------------------------------------------
 # _bumps_do_checkout — bumps publicados da mesma rede, no idioma, em ordem
 # ---------------------------------------------------------------------------
 def _criar_produto(tipo, numero, pasta, itens):

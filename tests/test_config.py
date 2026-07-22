@@ -48,11 +48,14 @@ def test_tem_tabela_de_precos_do_brasil_separada():
     assert s["precos_brasil"]["Order Bump"] == 12.90
 
 
-def test_tem_segundo_coprodutor_e_cupom_nos_defaults():
+def test_tem_segundo_coprodutor_e_cupons_nos_defaults():
     s = config.carregar_settings()
     assert s["coproducao2"] == {"email": "", "percentual": 45}
-    assert s["cupom"]["ativo"] is False          # desligado por padrao
-    assert s["cupom"]["desconto"] == 10
+    codigos = {c["codigo"]: c for c in s["cupons"]}
+    assert set(codigos) == {"25OFF", "35OFF"}
+    assert codigos["25OFF"]["desconto_padrao"] == 25 and codigos["25OFF"]["desconto_eur"] == 25
+    assert codigos["35OFF"]["desconto_padrao"] == 35.18 and codigos["35OFF"]["desconto_eur"] == 40
+    assert all(c["ativo"] for c in s["cupons"])
 
 
 def test_salvar_e_recarregar_preserva_valores():

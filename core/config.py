@@ -23,9 +23,13 @@ _DEFAULTS = {
     # 2º coprodutor (opcional) — convidado DEPOIS do 1º, com intervalo de 40s
     # pra não misturar os códigos 2FA no Gmail
     "coproducao2": {"email": "", "percentual": 45},
-    # cupom automático no ebook PRINCIPAL após publicar — o robô cria CLICANDO
-    # na tela de Cupons do produto (a API oficial de cupom é bugada)
-    "cupom": {"ativo": False, "codigo": "", "desconto": 10},
+    # cupons automáticos no ebook PRINCIPAL — o robô cria CLICANDO na tela de
+    # Cupons (a API é bugada). Cada cupom tem desconto por MOEDA: 'padrao' vale
+    # pra USD e BRL; 'eur' vale pros países do euro.
+    "cupons": [
+        {"ativo": True, "codigo": "25OFF", "desconto_padrao": 25,    "desconto_eur": 25},
+        {"ativo": True, "codigo": "35OFF", "desconto_padrao": 35.18, "desconto_eur": 40},
+    ],
     # Leitura automatica do codigo 2FA no Gmail (IMAP + App Password)
     "gmail": {"email": "", "app_password": "", "auto": False},
     "descricao": {

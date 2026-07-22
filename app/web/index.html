@@ -232,21 +232,10 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
       </div>
 
       <div class="card config-card">
-        <h2>Cupom automático <small>(só no ebook PRINCIPAL — o robô cria clicando na tela de Cupons)</small></h2>
-        <label class="robo-ensaio" style="margin-bottom:12px">
-          <input type="checkbox" id="cfg-cupom-ativo"> Criar cupom automaticamente após publicar o Principal
-        </label>
-        <div class="campo-duplo">
-          <div class="campo">
-            <label>Código do cupom <small>(máx. 25 caracteres)</small></label>
-            <input id="cfg-cupom-codigo" type="text" spellcheck="false" maxlength="25" placeholder="PROMO10">
-          </div>
-          <div class="campo">
-            <label>Desconto (%)</label>
-            <input id="cfg-cupom-desconto" type="number" min="1" max="98">
-          </div>
-        </div>
-        <small>Depois de finalizar o cadastro do Principal, o robô abre o menu Cupons do produto, cria o cupom e confere que ele apareceu na lista.</small>
+        <h2>Cupons automáticos <small>(só no ebook PRINCIPAL — o robô cria clicando na tela de Cupons)</small></h2>
+        <small class="cupons-legenda">Cada cupom tem duas %: <b>USD/BRL</b> (dólar e real) e <b>EUR</b> (países do euro). O robô escolhe a % pela moeda do país.</small>
+        <div id="cfg-cupons" class="cupons-lista"></div>
+        <small>Ao publicar o Principal, o robô abre o menu Cupons, cria cada cupom ativo com a % da moeda do país e confere que apareceu na lista.</small>
       </div>
 
       <div class="card config-card">

@@ -257,9 +257,7 @@ async function carregarConfig() {
   $("cfg-coprod-pct").value = s.coproducao.percentual;
   $("cfg-coprod2-email").value = (s.coproducao2 && s.coproducao2.email) || "";
   $("cfg-coprod2-pct").value = (s.coproducao2 && s.coproducao2.percentual) || 45;
-  $("cfg-cupom-ativo").checked = !!(s.cupom && s.cupom.ativo);
-  $("cfg-cupom-codigo").value = (s.cupom && s.cupom.codigo) || "";
-  $("cfg-cupom-desconto").value = (s.cupom && s.cupom.desconto) || 10;
+  renderCupons(s.cupons || []);
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
   $("cfg-cdp-port").value = (s.robo && s.robo.cdp_port) || 9222;
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
@@ -283,6 +281,35 @@ async function carregarConfig() {
   // deixa o campo ja preenchido com a ultima pasta usada (sem lista de historico)
   const ultima = (s.pastas_recentes || [])[0];
   if (ultima && !$("scan-pasta").value) $("scan-pasta").value = ultima;
+}
+
+// cada cupom: código + % USD/BRL + % EUR + ativo (o robô escolhe a % pela moeda)
+function renderCupons(cupons) {
+  const lista = cupons.length ? cupons
+    : [{ ativo: true, codigo: "", desconto_padrao: 25, desconto_eur: 25 }];
+  $("cfg-cupons").innerHTML = lista.map((c) => `
+    <div class="cupom-linha">
+      <label class="cupom-check" title="Criar este cupom automaticamente">
+        <input type="checkbox" data-cupom="ativo" ${c.ativo ? "checked" : ""}></label>
+      <input class="cupom-cod" type="text" spellcheck="false" maxlength="25" placeholder="CÓDIGO"
+        data-cupom="codigo" value="${esc(c.codigo || "")}">
+      <span class="cupom-cap">USD/BRL</span>
+      <input class="cupom-pct" type="number" step="0.01" min="1" max="98"
+        data-cupom="desconto_padrao" value="${c.desconto_padrao ?? 25}">
+      <span class="cupom-cap">EUR</span>
+      <input class="cupom-pct" type="number" step="0.01" min="1" max="98"
+        data-cupom="desconto_eur" value="${c.desconto_eur ?? 25}">
+      <span class="cupom-cap">%</span>
+    </div>`).join("");
+}
+
+function coletarCupons() {
+  return [...document.querySelectorAll(".cupom-linha")].map((lin) => ({
+    ativo: lin.querySelector("[data-cupom='ativo']").checked,
+    codigo: lin.querySelector("[data-cupom='codigo']").value.trim(),
+    desconto_padrao: parseFloat(lin.querySelector("[data-cupom='desconto_padrao']").value || "0"),
+    desconto_eur: parseFloat(lin.querySelector("[data-cupom='desconto_eur']").value || "0"),
+  })).filter((c) => c.codigo);  // linha sem código é ignorada
 }
 
 $("btn-salvar-config").addEventListener("click", async () => {
@@ -314,11 +341,7 @@ $("btn-salvar-config").addEventListener("click", async () => {
       email: $("cfg-coprod2-email").value.trim(),
       percentual: parseInt($("cfg-coprod2-pct").value || "45", 10),
     },
-    cupom: {
-      ativo: $("cfg-cupom-ativo").checked,
-      codigo: $("cfg-cupom-codigo").value.trim(),
-      desconto: parseInt($("cfg-cupom-desconto").value || "10", 10),
-    },
+    cupons: coletarCupons(),
     robo: {
       delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10),
       cdp_port: parseInt($("cfg-cdp-port").value || "9222", 10),

@@ -921,7 +921,7 @@ class Tela:
             self.page.wait_for_timeout(1500)
         return False
 
-    def criar_cupom_ui(self, codigo: str, desconto_pct: int) -> None:
+    def criar_cupom_ui(self, codigo: str, desconto_pct: float) -> None:
         """Cria o cupom CLICANDO na tela de Cupons do produto (menu lateral) —
         a API oficial de cupom é bugada (200 sem criar), então vai pela UI mesmo.
 
@@ -1193,11 +1193,9 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 page.wait_for_timeout(2500)
 
             # ---- 4. preco ---------------------------------------------------
-            # Regra: todos em Dolar, SO o Brasil em Real.
-            if item["codigo"] == "pt-br":
-                moeda_txt, sigla = "Real Brasileiro", "BRL"
-            else:
-                moeda_txt, sigla = "Dólar Americano", "USD"
+            # Moeda por país: BRL=Brasil, USD=Inglês/Espanha/Rússia/Coreia, EUR=resto.
+            sigla = hm.moeda_do_pais(item["codigo"])
+            moeda_txt = hm.moeda_hotmart(item["codigo"])
             job.marcar_etapa("preco", f"Definindo preço: {sigla} {item['preco']:.2f}...")
             tela.escolher_opcao("campo_moeda", moeda_txt)
             job.lap("preco: select moeda")
@@ -1326,22 +1324,30 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     job.log("A Hotmart acusou erro na verificação do convite — o convite pode ter "
                             "entrado como Pendente mesmo assim (confira depois). Seguindo em frente.", "aviso")
 
-            # ---- 7. cupom no PRINCIPAL — ANTES de finalizar (depois de enviar
-            # pra análise a tela pode travar a criação). Best-effort: se falhar,
-            # vira aviso com print e o fluxo segue pro finalizar mesmo assim.
-            c_cfg = s.get("cupom", {})
-            if c_cfg.get("ativo") and produto.get("tipo") == "Principal":
-                try:
-                    job.marcar_etapa("cupom",
-                                     f"Criando cupom '{c_cfg.get('codigo')}' ({c_cfg.get('desconto')}%) na tela de Cupons...")
-                    tela.criar_cupom_ui(str(c_cfg.get("codigo") or ""),
-                                        int(float(c_cfg.get("desconto", 10) or 10)))
-                    job.log(f"Cupom '{c_cfg.get('codigo')}' criado e conferido na lista ✔", "ok")
-                except Exception as e:
-                    tela.shot("erro_cupom")
-                    job.log(f"Cupom: não consegui criar clicando ({str(e)[:150]}) — "
-                            "seguindo pro Finalizar mesmo assim; crie o cupom na mão e "
-                            "me mande o print da tela pra eu calibrar.", "aviso")
+            # ---- 7. cupons no PRINCIPAL — ANTES de finalizar (depois de enviar
+            # pra análise a tela pode travar). Cada cupom ativo com a % da MOEDA
+            # do país: 'desconto_padrao' pra USD/BRL, 'desconto_eur' pro euro.
+            # Best-effort: se um falhar, avisa e segue (nunca derruba a publicação).
+            cupons_cfg = [c for c in s.get("cupons", []) if c.get("ativo")]
+            if cupons_cfg and produto.get("tipo") == "Principal":
+                moeda = hm.moeda_do_pais(item["codigo"])
+                for c in cupons_cfg:
+                    codigo = str(c.get("codigo") or "").strip()
+                    if not codigo:
+                        continue
+                    if moeda == "EUR":
+                        pct = float(c.get("desconto_eur", 0) or 0)
+                    else:
+                        pct = float(c.get("desconto_padrao", 0) or 0)
+                    try:
+                        job.marcar_etapa("cupom",
+                                         f"Cupom '{codigo}' ({pct:g}% · {moeda}) na tela de Cupons...")
+                        tela.criar_cupom_ui(codigo, pct)
+                        job.log(f"Cupom '{codigo}' ({pct:g}%) criado e conferido na lista ✔", "ok")
+                    except Exception as e:
+                        tela.shot(f"erro_cupom_{codigo}")
+                        job.log(f"Cupom '{codigo}': não consegui criar clicando ({str(e)[:120]}) — "
+                                "seguindo em frente; crie na mão e me manda o print pra calibrar.", "aviso")
 
             # ---- 8. finalizar (direto, sem pausa) ---------------------------
             job.marcar_etapa("finalizar", "Voltando ao Painel e finalizando o cadastro...")

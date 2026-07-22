@@ -77,6 +77,31 @@ def texto_contagem(codigo: str) -> str:
     """Texto da contagem regressiva na lingua do pais (ingles se nao tiver)."""
     return TEXTO_CONTAGEM.get(codigo, TEXTO_CONTAGEM["en"])
 
+
+# Moeda do produto por país (dropdown "Moeda" da precificação):
+#   BRL = só Brasil · USD = Inglês/Espanha/Rússia/Coreia do Sul · EUR = todo o resto.
+MOEDA_USD = {"en", "es", "ru", "ko"}
+# label da moeda EXATAMENTE como aparece no dropdown de preço da Hotmart
+MOEDA_HOTMART = {
+    "BRL": "Real Brasileiro",
+    "USD": "Dólar Americano",
+    "EUR": "Euro",
+}
+
+
+def moeda_do_pais(codigo: str) -> str:
+    """'BRL' | 'USD' | 'EUR' pra o idioma/país do produto."""
+    if codigo == "pt-br":
+        return "BRL"
+    if codigo in MOEDA_USD:
+        return "USD"
+    return "EUR"
+
+
+def moeda_hotmart(codigo: str) -> str:
+    """Nome da moeda no dropdown de preço da Hotmart pra o país."""
+    return MOEDA_HOTMART[moeda_do_pais(codigo)]
+
 # Nome do pais como aparece em "Principal pais para vendas"
 PAIS_HOTMART = {
     "pt-br": "Brasil",
