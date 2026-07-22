@@ -1206,6 +1206,15 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
             job.lap("preco: select forma pagamento")
             valor = f"{item['preco']:.2f}".replace(".", ",")
             tela.preencher("campo_valor", valor)
+            # marca "Incluir impostos no preço (exceto p/ México)" — best-effort:
+            # se o seletor mudar, avisa mas nao derruba a publicacao
+            try:
+                tela.clicar_por_texto("Incluir impostos no preço", exato=False, timeout=6000)
+                job.log("Marquei 'Incluir impostos no preço' ✔")
+            except RoboError:
+                tela.shot("erro_incluir_impostos")
+                job.log("Não achei o 'Incluir impostos no preço' — confira o print e marque "
+                        "na mão; me manda a tela pra eu calibrar.", "aviso")
             tela.shot("preco")
             tela.clicar("btn_salvar_continuar")
             job.lap("preco: digitar valor + salvar")
