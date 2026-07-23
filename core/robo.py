@@ -779,6 +779,77 @@ class Tela:
         self.shot(f"erro_botao_{texto}")
         raise RoboError(f"Não achei o botão/opção '{texto}'. Print salvo em data/publicacoes.")
 
+    def selecionar_template(self, nome: str, timeout: int = 20000) -> None:
+        """Seleciona um template do builder de checkout (card = thumbnail +
+        legenda). O grid mudou (encheu de sazonais) e a legenda deixou de casar
+        como texto simples. Tenta VÁRIOS caminhos, em ordem:
+          1) legenda por texto (exato -> contém);
+          2) qualquer card clicável que CONTENHA a legenda;
+          3) o thumbnail (img) do card;
+        e, se nada funcionar, salva um DUMP da tela pra calibrar."""
+        import re
+        exato = re.compile(rf"^\s*{re.escape(nome)}\s*$", re.I)
+        contem = re.compile(re.escape(nome), re.I)
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for ctx in self._contextos():
+                fabricas = [
+                    ctx.get_by_text(exato),
+                    ctx.get_by_text(contem),
+                    ctx.get_by_role("img", name=contem),
+                    ctx.locator("[class*='template'], [class*='card'], li, button, a")
+                       .filter(has_text=contem),
+                ]
+                for loc in fabricas:
+                    try:
+                        el = loc.first
+                        if el.is_visible():
+                            try:
+                                el.scroll_into_view_if_needed(timeout=2000)
+                            except Exception:
+                                pass
+                            el.click(timeout=2500)
+                            self.page.wait_for_timeout(500)
+                            return
+                    except Exception:
+                        continue
+            if time.time() >= fim:
+                break
+            self.page.wait_for_timeout(250)
+        self._dump_template_debug(nome)
+        self.shot(f"erro_template_{nome}")
+        raise RoboError(
+            f"Não achei o template '{nome}'. Salvei um dump da tela em "
+            "data/publicacoes/template_debug.txt — me manda esse arquivo pra calibrar."
+        )
+
+    def _dump_template_debug(self, nome: str) -> None:
+        """Salva o texto/estrutura visível da tela quando o template não é achado
+        — pra descobrir COMO a Hotmart está renderizando o card agora."""
+        linhas = [f"=== não achei o template '{nome}' ==="]
+        for ci, ctx in enumerate(self._contextos()):
+            try:
+                txt = ctx.locator("body").inner_text(timeout=2500)
+                linhas.append(f"\n[contexto {ci}] TEXTO VISÍVEL (primeiros 2000):\n{txt[:2000]}")
+            except Exception:
+                continue
+            try:
+                imgs = ctx.get_by_role("img")
+                nomes = []
+                for i in range(min(imgs.count(), 25)):
+                    try:
+                        nomes.append(imgs.nth(i).get_attribute("alt") or
+                                     imgs.nth(i).get_attribute("aria-label") or "?")
+                    except Exception:
+                        pass
+                linhas.append(f"[contexto {ci}] IMAGENS (alt/aria): {nomes}")
+            except Exception:
+                pass
+        try:
+            (self.pasta / "template_debug.txt").write_text("\n".join(linhas), encoding="utf-8")
+        except Exception:
+            pass
+
     def ir_para_conteudo(self) -> None:
         """Vai pra tela de Conteúdo do Produto. Tenta o menu lateral; se ele
         estiver colapsado/não clicar (comum com 2 contas em janelas menores),
@@ -1493,9 +1564,9 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             job.marcar_etapa("ck_nova_pagina", "Criando nova página (Em Branco)...")
             tela.clicar("ck_btn_criar_pagina", timeout=10000)
             page.wait_for_timeout(2500)   # grid de templates (agora cheio de sazonais)
-            # 'Em Branco' é o card de template (thumbnail + legenda), não um botão:
-            # match TOLERANTE (contém) e clica na legenda -> seleciona o card.
-            tela.clicar_por_texto("Em Branco", exato=False, timeout=20000)
+            # 'Em Branco' é o card de template (thumbnail + legenda) — o grid mudou,
+            # então usa o seletor robusto (vários caminhos + dump se falhar).
+            tela.selecionar_template("Em Branco", timeout=20000)
             page.wait_for_timeout(2500)
             tela.shot("ck_editor")
 
