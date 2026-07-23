@@ -154,6 +154,42 @@ def remover(produto_id: str) -> None:
             arq.unlink()
 
 
+def reaplicar_precos(precos: dict, precos_eur: dict | None = None,
+                     precos_brasil: dict | None = None) -> int:
+    """Reaplica as tabelas de preço da config a TODOS os produtos da fila, por
+    MOEDA do país + tipo. O preço é congelado na importação; isto é o 'empurrar
+    a config atual pra fila'. Mantém tudo o mais (traduções, status). Retorna
+    quantos idiomas tiveram o preço alterado."""
+    from core import hotmart_map as _hm
+    por_moeda = {
+        "USD": precos,
+        "EUR": precos_eur if precos_eur is not None else precos,
+        "BRL": precos_brasil if precos_brasil is not None else precos,
+    }
+    alterados = 0
+    with _TRAVA:
+        if not PASTA_PRODUTOS.is_dir():
+            return 0
+        for arq in PASTA_PRODUTOS.glob("*.json"):
+            try:
+                with open(arq, "r", encoding="utf-8") as f:
+                    reg = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+            tipo = reg.get("tipo")
+            mudou = False
+            for item in reg.get("idiomas", []):
+                tabela = por_moeda[_hm.moeda_do_pais(item["codigo"])]
+                novo = float(tabela.get(tipo, 0) or 0)
+                if float(item.get("preco", 0) or 0) != novo:
+                    item["preco"] = novo
+                    mudou = True
+                    alterados += 1
+            if mudou:
+                _salvar(reg)
+    return alterados
+
+
 def remover_todos() -> int:
     """Apaga TODOS os produtos da fila. Retorna quantos foram removidos.
     NAO apaga PDFs/capas — so os registros JSON da fila."""

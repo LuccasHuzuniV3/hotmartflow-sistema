@@ -372,6 +372,24 @@ $("btn-salvar-config").addEventListener("click", async () => {
   } catch (e) { toast(e.message, "erro"); }
 });
 
+$("btn-reaplicar-precos").addEventListener("click", async () => {
+  if (!confirm("Reaplicar os preços da Config (Dólar/Euro/Brasil) em TODOS os produtos da fila?\n\n"
+    + "Substitui os preços atuais da fila pelos das tabelas — inclusive os que você editou na mão. Traduções e status ficam intactos.")) return;
+  const btn = $("btn-reaplicar-precos");
+  const fb = $("reaplicar-feedback");
+  btn.disabled = true; fb.textContent = "aplicando...";
+  try {
+    // salva a config atual antes, pra reaplicar exatamente o que está na tela
+    $("btn-salvar-config").click();
+    await new Promise((r) => setTimeout(r, 400));
+    const r = await api("POST", "/api/produtos/reaplicar-precos");
+    fb.textContent = `${r.alterados} preço(s) atualizado(s) na fila ✓`;
+    await carregarProdutos();
+    setTimeout(() => (fb.textContent = ""), 5000);
+  } catch (e) { fb.textContent = ""; toast(e.message, "erro"); }
+  finally { btn.disabled = false; }
+});
+
 // ---------------------------------------------------------------------------
 // Scan / importação
 // ---------------------------------------------------------------------------

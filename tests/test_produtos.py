@@ -80,6 +80,34 @@ def test_criar_sem_tabela_eur_cai_na_usd():
     assert reg["idiomas"][0]["preco"] == 9.90  # EUR sem tabela -> USD (compat)
 
 
+def test_reaplicar_precos_empurra_config_por_moeda():
+    grupo = {"titulo": "X", "tipo": "Principal", "idiomas": [
+        {"codigo": "pt-br", "pais": "Brasil", "pdf": "a", "capa": None},  # BRL
+        {"codigo": "en", "pais": "Ingles", "pdf": "b", "capa": None},     # USD
+        {"codigo": "de", "pais": "Alemao", "pdf": "c", "capa": None},     # EUR
+    ]}
+    # importado com preço antigo (tudo 5.00)
+    reg = produtos.criar(grupo, pasta_origem="C:/x", precos={"Principal": 5.00})
+    assert all(i["preco"] == 5.00 for i in reg["idiomas"])
+
+    # config mudou; reaplica por moeda
+    n = produtos.reaplicar_precos(
+        precos={"Principal": 9.90},          # USD
+        precos_eur={"Principal": 29.90},     # EUR
+        precos_brasil={"Principal": 19.90})  # BRL
+    assert n == 3
+    final = {i["codigo"]: i["preco"] for i in produtos.obter(reg["id"])["idiomas"]}
+    assert final == {"pt-br": 19.90, "en": 9.90, "de": 29.90}
+
+
+def test_reaplicar_precos_nao_conta_quem_ja_esta_certo():
+    grupo = {"titulo": "X", "tipo": "Order Bump", "numero": 1,
+             "idiomas": [{"codigo": "en", "pais": "Ingles", "pdf": "b", "capa": None}]}
+    produtos.criar(grupo, pasta_origem="C:/x", precos={"Order Bump": 9.90})
+    # reaplica o MESMO valor -> nada muda
+    assert produtos.reaplicar_precos(precos={"Order Bump": 9.90}) == 0
+
+
 def test_criar_tipo_sem_preco_na_tabela_usa_zero():
     g = grupo_exemplo()
     g["tipo"] = "Bonus"

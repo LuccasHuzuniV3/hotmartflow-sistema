@@ -316,6 +316,16 @@ def produtos_remover_todos():
     return {"ok": True, "removidos": n}
 
 
+@app.post("/api/produtos/reaplicar-precos")
+def produtos_reaplicar_precos():
+    """Empurra as tabelas de preço da config pra fila inteira (preço é congelado
+    na importação; isto atualiza os já importados por moeda + tipo)."""
+    s = config.carregar_settings()
+    n = produtos.reaplicar_precos(s["precos"], precos_eur=s.get("precos_eur"),
+                                  precos_brasil=s.get("precos_brasil"))
+    return {"ok": True, "alterados": n}
+
+
 @app.get("/api/produtos/{produto_id}")
 def produto_obter(produto_id: str):
     try:
