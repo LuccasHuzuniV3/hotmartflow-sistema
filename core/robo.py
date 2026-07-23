@@ -1492,8 +1492,10 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             # ---- 2. nova pagina em branco -----------------------------------
             job.marcar_etapa("ck_nova_pagina", "Criando nova página (Em Branco)...")
             tela.clicar("ck_btn_criar_pagina", timeout=10000)
-            page.wait_for_timeout(1500)
-            tela.clicar_por_texto("Em Branco")
+            page.wait_for_timeout(2500)   # grid de templates (agora cheio de sazonais)
+            # 'Em Branco' é o card de template (thumbnail + legenda), não um botão:
+            # match TOLERANTE (contém) e clica na legenda -> seleciona o card.
+            tela.clicar_por_texto("Em Branco", exato=False, timeout=20000)
             page.wait_for_timeout(2500)
             tela.shot("ck_editor")
 
