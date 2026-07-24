@@ -300,9 +300,10 @@ def _resumir_descricao(texto: str, limite: int = 500) -> str:
     return corte.strip()
 
 
-def _bumps_do_checkout(produto: dict, codigo: str) -> list[dict]:
+def _bumps_do_checkout(produto: dict, codigo: str, limite: int = 0) -> list[dict]:
     """Order Bumps da MESMA rede (pasta) no idioma do checkout, em ordem de
     número — só os PUBLICADOS (precisam existir na Hotmart pra entrar no bump).
+    `limite`: máximo de bumps a incluir (os de menor número primeiro); 0 = todos.
     Retorna [{numero, titulo, descricao(≤500)}]."""
     pasta = str(produto.get("pasta", ""))
     bumps: list[dict] = []
@@ -321,6 +322,8 @@ def _bumps_do_checkout(produto: dict, codigo: str) -> list[dict]:
             "descricao": _resumir_descricao(it.get("descricao") or "", 500),
         })
     bumps.sort(key=lambda b: b["numero"])
+    if limite and limite > 0:
+        bumps = bumps[:limite]   # só os N primeiros (menor número)
     return bumps
 
 
@@ -1532,7 +1535,8 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
     pasta_shots = PASTA_PUBLICACOES / job.produto_id / f"checkout_{item['codigo']}"
     pasta_shots.mkdir(parents=True, exist_ok=True)
 
-    bumps = _bumps_do_checkout(produto, item["codigo"])
+    limite_bumps = int(s.get("checkout", {}).get("max_order_bumps", 0) or 0)
+    bumps = _bumps_do_checkout(produto, item["codigo"], limite=limite_bumps)
     imagem = _imagem_checkout(produto.get("pasta", ""), item["codigo"])
     texto_cont = hm.texto_contagem(item["codigo"])
     # no builder nao tem o anti-bot do cadastro — digitacao rapida (descricoes longas)

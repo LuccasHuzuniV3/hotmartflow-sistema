@@ -42,6 +42,8 @@ _DEFAULTS = {
     "traduzir_simultaneas": 15,
     # robo: ensaio = modo seguro; delay_digitacao_ms = ms por tecla (anti-bot Hotmart)
     "robo": {"ensaio": True, "delay_digitacao_ms": 45, "cdp_port": 9222, "alarme": True},
+    # checkout: quantos order bumps entram na página (0 = todos os publicados)
+    "checkout": {"max_order_bumps": 0},
 }
 
 

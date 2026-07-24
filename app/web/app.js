@@ -260,6 +260,7 @@ async function carregarConfig() {
   renderCupons(s.cupons || []);
   $("cfg-delay-digitacao").value = (s.robo && s.robo.delay_digitacao_ms != null) ? s.robo.delay_digitacao_ms : 45;
   $("cfg-cdp-port").value = (s.robo && s.robo.cdp_port) || 9222;
+  $("cfg-max-bumps").value = (s.checkout && s.checkout.max_order_bumps != null) ? s.checkout.max_order_bumps : 0;
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
   $("cfg-gmail-email").value = (s.gmail && s.gmail.email) || "";
   $("cfg-gmail-senha").value = (s.gmail && s.gmail.app_password) || "";
@@ -357,6 +358,9 @@ $("btn-salvar-config").addEventListener("click", async () => {
     robo: {
       delay_digitacao_ms: parseInt($("cfg-delay-digitacao").value || "45", 10),
       cdp_port: parseInt($("cfg-cdp-port").value || "9222", 10),
+    },
+    checkout: {
+      max_order_bumps: parseInt($("cfg-max-bumps").value || "0", 10),
     },
     gmail: {
       auto: $("cfg-gmail-auto").checked,

@@ -30,6 +30,11 @@ def test_robo_comeca_em_modo_ensaio():
     assert s["robo"]["ensaio"] is True
 
 
+def test_checkout_max_order_bumps_padrao_zero():
+    s = config.carregar_settings()
+    assert s["checkout"]["max_order_bumps"] == 0  # 0 = todos
+
+
 def test_default_tem_pastas_recentes_vazia():
     s = config.carregar_settings()
     assert s["pastas_recentes"] == []

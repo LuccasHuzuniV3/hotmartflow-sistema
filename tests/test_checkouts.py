@@ -97,6 +97,19 @@ def test_bumps_do_checkout_filtra_e_ordena():
     assert all(len(b["descricao"]) <= 500 for b in bumps)              # corta em 500
 
 
+def test_bumps_do_checkout_respeita_limite():
+    principal = _criar_produto("Principal", None, "C:/redeL", [_item("de", "Alemao")])
+    for n in (1, 2, 3, 4):
+        b = _criar_produto("Order Bump", n, "C:/redeL", [_item("de", "Alemao")])
+        produtos.atualizar_item(b["id"], "de",
+                                {"titulo": f"Bump {n}", "descricao": "D", "status": "publicado"})
+    p = produtos.obter(principal["id"])
+    # limite 0 = todos; limite 2 = só os 2 primeiros (menor número)
+    assert len(robo._bumps_do_checkout(p, "de", limite=0)) == 4
+    dois = robo._bumps_do_checkout(p, "de", limite=2)
+    assert [b["numero"] for b in dois] == [1, 2]
+
+
 # ---------------------------------------------------------------------------
 # _resumir_descricao — corta na última FRASE completa (nunca no meio da palavra)
 # ---------------------------------------------------------------------------
