@@ -266,6 +266,29 @@ def test_upsell_tambem_e_reconhecido(tmp_path):
     assert r["grupos"][0]["tipo"] == "Upsell"
 
 
+def test_ordem_bump_portugues_vira_order_bump(tmp_path):
+    # "ORDEM BUMP" (português) tem que ser Order Bump, não cair em Principal
+    criar(tmp_path, "ORDEM BUMP 1 REDE 9 - BIEL - Alemao.pdf")
+    r = scanner.analisar_pasta(tmp_path)
+    assert r["grupos"][0]["tipo"] == "Order Bump"
+
+
+def test_bonus_com_ordem_bump_anexa_certo_sem_varios_principais(tmp_path):
+    # o cenário do bug: PRINCIPAL + ORDEM BUMP (pt) + BONUS. Antes, o ORDEM BUMP
+    # virava um 2º Principal e o bônus caía em "Vários Principais". Agora não.
+    criar(
+        tmp_path,
+        "PRINCIPAL REDE 9 - BIEL - Alemao.pdf",
+        "ORDEM BUMP 1 REDE 9 - BIEL - Alemao.pdf",
+        "BONUS 1 REDE 9 - BIEL - Alemao.pdf",
+    )
+    r = scanner.analisar_pasta(tmp_path)
+    assert r["ignorados"] == []                       # nada ignorado
+    principal = next(g for g in r["grupos"] if g["tipo"] == "Principal")
+    assert len(principal["idiomas"][0]["anexos"]) == 1   # o bônus anexou
+    assert any(g["tipo"] == "Order Bump" for g in r["grupos"])  # o ordem bump é produto
+
+
 # ---------------------------------------------------------------------------
 # Anexos: BONUS -> Principal, EXTRA x OP y -> OPSELL y
 # ---------------------------------------------------------------------------

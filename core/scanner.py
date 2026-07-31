@@ -31,6 +31,9 @@ SUBPASTA_CAPAS = "capas"
 
 _RE_EXTRA = re.compile(r"^extra\b.*?\bop\s*(\d+)")
 _RE_OPSELL = re.compile(r"^(?:opsell|upsell)\s*(\d+)?")
+# order bump em INGLÊS ou PORTUGUÊS ("ORDER BUMP" / "ORDEM BUMP") — senão o
+# arquivo cai em Principal por default e vira "Vários Principais"
+_RE_ORDER_BUMP = re.compile(r"^(?:order|ordem)\s+bump")
 
 
 class ScannerError(Exception):
@@ -55,7 +58,7 @@ def _classificar(titulo: str, tipo_slot: str | None) -> tuple[str, object]:
         return "anexo", ("opsell", int(m.group(1)))
     if t.startswith("principal"):
         return "produto", ("Principal", None)
-    if t.startswith("order bump"):
+    if _RE_ORDER_BUMP.match(t):   # "order bump" OU "ordem bump"
         return "produto", ("Order Bump", None)
     m = _RE_OPSELL.match(t)
     if m and (t.startswith("opsell") or t.startswith("upsell")):
@@ -176,8 +179,11 @@ def _montar_grupos(registros: list[dict], ignorados: list[dict]) -> list[dict]:
                 ignorados.append({"arquivo": reg["arquivo"].name,
                                   "motivo": f"Bônus sem produto Principal em {reg['pais']}"})
             else:
+                nomes = "; ".join(Path(c["pdf"]).name for c in candidatos)
                 ignorados.append({"arquivo": reg["arquivo"].name,
-                                  "motivo": f"Vários Principais em {reg['pais']} — vincule a capa/bônus manualmente"})
+                                  "motivo": f"Vários Principais em {reg['pais']} — algum arquivo fora "
+                                            f"do padrão virou Principal. São eles: [{nomes}]. "
+                                            "Confira se um deles devia ser Order Bump/Upsell/Bônus."})
         else:  # opsell
             item = opsells.get((num, reg["codigo"]))
             if item is not None:
