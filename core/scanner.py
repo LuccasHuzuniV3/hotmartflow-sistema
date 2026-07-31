@@ -53,9 +53,10 @@ def _classificar(titulo: str, tipo_slot: str | None) -> tuple[str, object]:
     t = idiomas.normalizar(titulo)
     if t.startswith("bonus"):
         return "anexo", ("principal", None)
-    m = _RE_EXTRA.match(t)
-    if m:
-        return "anexo", ("opsell", int(m.group(1)))
+    if t.startswith("extra"):
+        # 'EXTRA n OP y' -> anexo do Upsell y; 'EXTRA n' (sem OP) -> Upsell 1
+        m = _RE_EXTRA.match(t)
+        return "anexo", ("opsell", int(m.group(1)) if m else 1)
     if t.startswith("principal"):
         return "produto", ("Principal", None)
     if _RE_ORDER_BUMP.match(t):   # "order bump" OU "ordem bump"
@@ -331,7 +332,7 @@ def achar_capa(pasta: Path, stem: str) -> str | None:
 import re as _re_ass  # noqa: E402
 
 _RE_BUMP = _re_ass.compile(r"^(?:order|ordem)\s+bump\s*(\d+)")
-_RE_EXTRA_ASS = _re_ass.compile(r"^extra\s*(\d+).*?\bop\s*(\d+)")
+_RE_EXTRA_ASS = _re_ass.compile(r"^extra\s*(\d+)")   # 'OP y' é opcional
 _RE_BONUS_ASS = _re_ass.compile(r"^b[oô]?nus\s*(\d+)")
 _RE_OPS_ASS = _re_ass.compile(r"^(?:opsell|upsell)\s*(\d+)")
 
@@ -345,7 +346,7 @@ def _assinatura(nome: str):
         return ("bump", int(m.group(1)))
     m = _RE_EXTRA_ASS.match(t)
     if m:
-        return ("extra", int(m.group(1)), int(m.group(2)))
+        return ("extra", int(m.group(1)))
     m = _RE_BONUS_ASS.match(t)
     if m:
         return ("bonus", int(m.group(1)))

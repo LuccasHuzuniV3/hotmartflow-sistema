@@ -327,6 +327,30 @@ def test_anexo_bonus_marcado_com_papel_e_numero(tmp_path):
     assert por_num[1]["titulo_pt"] == "" and por_num[1]["titulo"] == ""
 
 
+def test_extra_sem_op_vai_pro_upsell_1(tmp_path):
+    # cenário REDE 8: 'EXTRA n' SEM 'OP y' -> anexa no Upsell 1 (não vira Principal)
+    criar(
+        tmp_path,
+        "PRINCIPAL REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+        "UPSELL 1 REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+        "EXTRA 1 REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+        "EXTRA 2 REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+        "BONUS 1 REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+        "BONUS 2 REDE 8 ESCOLHIDOS - BIEL - Alemao.pdf",
+    )
+    r = scanner.analisar_pasta(tmp_path)
+    assert r["ignorados"] == []                               # nada ignorado!
+    tipos = {g["tipo"] for g in r["grupos"]}
+    assert tipos == {"Principal", "Upsell"}                   # extra NÃO virou Principal
+    principal = next(g for g in r["grupos"] if g["tipo"] == "Principal")
+    assert len(principal["idiomas"][0]["anexos"]) == 2        # os 2 bônus anexaram
+    upsell = next(g for g in r["grupos"] if g["tipo"] == "Upsell")
+    anexos_up = upsell["idiomas"][0]["anexos"]
+    assert len(anexos_up) == 2                                # os 2 extras no Upsell 1
+    assert {a["papel"] for a in anexos_up} == {"extra"}
+    assert {a["numero"] for a in anexos_up} == {1, 2}
+
+
 def test_extra_vai_pro_opsell_certo(tmp_path):
     criar(
         tmp_path,
