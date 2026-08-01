@@ -268,7 +268,12 @@ placeholder="EBOOK PRINCIPAL ; O GRANDE SEGREDO DO UNIVERSO...&#10;BONUS 1 ; OS 
             <input id="cfg-gmail-senha" type="password" spellcheck="false" placeholder="16 letras">
           </div>
         </div>
-        <small>Precisa: IMAP ligado no Gmail + verificação em 2 etapas + uma "Senha de app" gerada em myaccount.google.com/apppasswords. Se falhar, o robô pede o código na tela como antes.</small>
+        <div class="campo">
+          <label>Se o código não chegar, esperar até quantos minutos
+            <small>— depois disso, PULA o produto (vira 'erro') e segue pro próximo, pra não travar a fila rodando sozinho</small></label>
+          <input id="cfg-gmail-timeout" type="number" min="1" max="15" step="1">
+        </div>
+        <small>Precisa: IMAP ligado no Gmail + verificação em 2 etapas + uma "Senha de app" gerada em myaccount.google.com/apppasswords. Com o auto DESLIGADO, o robô pausa e pede o código na tela (modo manual).</small>
       </div>
 
       <button id="btn-salvar-config" class="btn primario btn-largo">Salvar configurações</button>

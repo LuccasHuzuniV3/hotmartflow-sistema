@@ -260,6 +260,45 @@ def test_finalizar_nao_declara_sucesso_sem_clicar():
 
 
 # ---------------------------------------------------------------------------
+# Código 2FA — Gmail auto com timeout que PULA o produto (não trava a fila)
+# ---------------------------------------------------------------------------
+def _job_2fa():
+    import types
+    st = {"pausou": 0}
+    job = types.SimpleNamespace(
+        log=lambda *a, **k: None,
+        aguardar_codigo=lambda: (st.__setitem__("pausou", st["pausou"] + 1) or "HUMANO"),
+        _st=st)
+    return job
+
+
+def test_2fa_gmail_acha_retorna_codigo(monkeypatch):
+    job = _job_2fa()
+    monkeypatch.setattr(robo.gmail_code, "buscar_codigo", lambda *a, **k: "123456")
+    s = {"gmail": {"auto": True, "email": "x@g.com", "app_password": "pw", "timeout_min": 5}}
+    assert robo._obter_codigo_2fa(job, s, desde_ts=0) == "123456"
+    assert job._st["pausou"] == 0  # não pausou pro humano
+
+
+def test_2fa_gmail_timeout_pula_produto_nao_pausa(monkeypatch):
+    job = _job_2fa()
+    monkeypatch.setattr(robo.gmail_code, "buscar_codigo", lambda *a, **k: None)  # não achou
+    s = {"gmail": {"auto": True, "email": "x@g.com", "app_password": "pw", "timeout_min": 5}}
+    with pytest.raises(robo.RoboError, match="não chegou"):
+        robo._obter_codigo_2fa(job, s, desde_ts=0)
+    assert job._st["pausou"] == 0  # NÃO travou esperando humano — levantou pra pular
+
+
+def test_2fa_auto_desligado_pausa_pro_humano(monkeypatch):
+    job = _job_2fa()
+    monkeypatch.setattr(robo.gmail_code, "buscar_codigo",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("não chama gmail")))
+    s = {"gmail": {"auto": False, "email": "", "app_password": ""}}
+    assert robo._obter_codigo_2fa(job, s, desde_ts=0) == "HUMANO"
+    assert job._st["pausou"] == 1  # modo manual: pausa e pede o código na tela
+
+
+# ---------------------------------------------------------------------------
 # clicar_por_texto — polling rápido (clica assim que aparece, sem varrer 900ms/candidato)
 # ---------------------------------------------------------------------------
 class _LocTextoFake:

@@ -30,8 +30,10 @@ _DEFAULTS = {
         {"ativo": True, "codigo": "25OFF", "desconto_padrao": 25,    "desconto_eur": 25},
         {"ativo": True, "codigo": "35OFF", "desconto_padrao": 35.18, "desconto_eur": 40},
     ],
-    # Leitura automatica do codigo 2FA no Gmail (IMAP + App Password)
-    "gmail": {"email": "", "app_password": "", "auto": False},
+    # Leitura automatica do codigo 2FA no Gmail (IMAP + App Password).
+    # timeout_min: espera o código até N min; se não vier, PULA o produto (não
+    # trava a fila esperando alguém colar na tela).
+    "gmail": {"email": "", "app_password": "", "auto": False, "timeout_min": 5},
     "descricao": {
         "tom": "inspirador, acolhedor e persuasivo",
         "tamanho_min": 400,

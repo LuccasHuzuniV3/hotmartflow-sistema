@@ -264,6 +264,7 @@ async function carregarConfig() {
   $("cfg-gmail-auto").checked = !!(s.gmail && s.gmail.auto);
   $("cfg-gmail-email").value = (s.gmail && s.gmail.email) || "";
   $("cfg-gmail-senha").value = (s.gmail && s.gmail.app_password) || "";
+  $("cfg-gmail-timeout").value = (s.gmail && s.gmail.timeout_min) || 5;
 
   const grid = $("cfg-precos");
   grid.innerHTML = Object.entries(s.precos).map(([tipo, preco]) => `
@@ -366,6 +367,7 @@ $("btn-salvar-config").addEventListener("click", async () => {
       auto: $("cfg-gmail-auto").checked,
       email: $("cfg-gmail-email").value.trim(),
       app_password: $("cfg-gmail-senha").value.trim(),
+      timeout_min: parseInt($("cfg-gmail-timeout").value || "5", 10),
     },
   };
   try {

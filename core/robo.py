@@ -937,17 +937,26 @@ class Tela:
         return copias
 
     def _elemento_visivel(self, chave: str, timeout: int = 1500) -> bool:
-        """True se ALGUM candidato da chave está visível agora (rápido, sem
-        screenshot de erro). Usado pra saber, p.ex., se o botão 'Finalizar' ainda
-        está na tela ou já sumiu (= cadastro finalizado)."""
-        for c in hm.MAPA[chave]:
-            for ctx in self._contextos():
-                try:
-                    self._loc_no_ctx(ctx, c).first.wait_for(state="visible", timeout=timeout)
-                    return True
-                except Exception:
-                    continue
-        return False
+        """True se ALGUM candidato da chave está visível — POLLING com is_visible
+        (instantâneo), sem screenshot de erro.
+
+        CRÍTICO pra velocidade: o jeito antigo (wait_for por candidato) pagava
+        candidatos × iframes × timeout quando o elemento estava AUSENTE. No
+        finalizar, concluir 'o botão sumiu' (o caso de SUCESSO!) chegava a levar
+        ~30s POR chamada — e o finalizar chama várias vezes (era o 'finalizar
+        105s'). Agora varre com is_visible e só espera o timeout no TOTAL."""
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for c in hm.MAPA[chave]:
+                for ctx in self._contextos():
+                    try:
+                        if self._loc_no_ctx(ctx, c).first.is_visible():
+                            return True
+                    except Exception:
+                        continue
+            if time.time() >= fim:
+                return False
+            self.page.wait_for_timeout(150)
 
     def finalizar_cadastro(self, tentativas: int = 3) -> bool:
         """Clica em 'Finalizar Cadastro' e reconhece o sucesso por DOIS sinais:
@@ -1177,19 +1186,26 @@ def _obter_codigo_2fa(job: Job, settings: dict, *, desde_ts: float,
     gm = settings.get("gmail", {})
     ligado = gm.get("auto") and (gm.get("email") or "").strip() and (gm.get("app_password") or "").strip()
     if ligado:
-        job.log("Buscando o código de segurança no Gmail automaticamente...")
+        minutos = int(gm.get("timeout_min", 5) or 5)
+        job.log(f"Buscando o código de segurança no Gmail (até {minutos} min)...")
         try:
             codigo = gmail_code.buscar_codigo(
-                gm["email"], gm["app_password"], desde_ts=desde_ts, timeout=90,
-                ignorar=ignorar)
+                gm["email"], gm["app_password"], desde_ts=desde_ts,
+                timeout=minutos * 60, intervalo=6, ignorar=ignorar)
         except gmail_code.GmailError as e:
             job.log(f"Gmail: {e}", "aviso")
             codigo = None
         if codigo:
             job.log(f"Código lido do Gmail: {codigo[:2]}**** ✔", "ok")
             return codigo
-        job.log("Não achei o código no Gmail a tempo — cole na tela, por favor.", "aviso")
-    return job.aguardar_codigo()  # fallback: pausa humana (cola na UI)
+        # não achou no tempo -> PULA o produto (não trava a fila esperando humano).
+        # o produto vira 'erro' e o "Publicar todos" segue pro próximo.
+        raise RoboError(
+            f"Código 2FA não chegou no Gmail em {minutos} min — pulei este produto pra "
+            "não travar a fila. Ficou como 'erro'; é só reprocessar depois."
+        )
+    # Gmail auto DESLIGADO -> pausa pro humano colar (modo manual, como antes)
+    return job.aguardar_codigo()
 
 
 def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
