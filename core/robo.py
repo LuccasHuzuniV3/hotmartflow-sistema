@@ -481,25 +481,26 @@ class Tela:
 
     def _localizar(self, chave: str, timeout: int = 4000):
         """Procura o elemento na página E em TODOS os iframes, tentando de novo
-        ate 'timeout' — a Hotmart embute telas (coprodução etc.) em iframe, e um
-        get_by_role na página principal nao enxerga o que esta dentro do frame."""
+        ate 'timeout' — a Hotmart embute telas (coprodução etc.) em iframe.
+
+        POLLING rápido: varre os candidatos com is_visible (INSTANTÂNEO) e devolve
+        o 1º visível. O jeito antigo (wait_for 600ms por candidato) pagava
+        600ms × candidatos × iframes — na coprodução dava ~7s POR chamada, e o
+        robô chama isto dezenas de vezes por produto (era boa parte da lentidão)."""
         candidatos = hm.MAPA[chave]
         fim = time.time() + timeout / 1000.0
-        primeira = True
         while True:
-            contextos = [self.page] + list(self.page.frames)  # pagina + iframes
             for c in candidatos:
-                for ctx in contextos:
+                for ctx in [self.page] + list(self.page.frames):  # pagina + iframes
                     try:
                         loc = self._loc_no_ctx(ctx, c).first
-                        loc.wait_for(state="visible", timeout=600)
-                        return loc
+                        if loc.is_visible():
+                            return loc
                     except Exception:
                         continue
-            if time.time() >= fim and not primeira:
+            if time.time() >= fim:
                 break
-            primeira = False
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(200)         # espera curta e re-varre
         self.shot(f"erro_{chave}")
         raise RoboError(
             f"Não achei '{chave}' na tela da Hotmart (procurei na página e nos iframes). "
