@@ -384,7 +384,8 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
         else:
             _executar_navegador(job, produto, item)
         if job.modo == "real":
-            produtos.atualizar_item(job.produto_id, job.codigo_idioma, {"status": "publicado"})
+            produtos.atualizar_item(job.produto_id, job.codigo_idioma,
+                                    {"status": "publicado", "hotmart_id": job.hotmart_id or ""})
             job.log("Publicado com sucesso ✔", "ok")
             try:  # grava no historico (rede = nome da pasta de origem)
                 rede = Path(produto.get("pasta", "")).name or produto.get("pasta", "")
@@ -1576,8 +1577,18 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
                 raise RoboError("Caiu na tela de login — entre na Hotmart na janela do robô e tente de novo.")
             tela.preencher("ck_busca", item["titulo"], delay=DELAY_CK)
             page.wait_for_timeout(2000)
-            # clica no card do produto (o titulo aparece no resultado da busca)
-            tela.clicar_por_texto(item["titulo"][:60], exato=False)
+            # clica no resultado pelo ID da Hotmart (cada card mostra "ID 8240896 ..."):
+            # garante o produto de VENDA ATIVA e nunca um rascunho de mesmo nome.
+            rede_ck = Path(produto.get("pasta", "")).name or produto.get("pasta", "")
+            hid = (item.get("hotmart_id") or "").strip() or historico.hotmart_id_de(
+                rede_ck, item["pais"], item["titulo"] or produto["titulo_pt"])
+            if hid:
+                job.log(f"Selecionando o produto pelo ID {hid} (venda ativa)...")
+                tela.clicar_por_texto(f"ID {hid}", exato=False, timeout=15000)
+            else:
+                job.log("Sem ID no histórico — clicando pelo título (pode pegar rascunho de "
+                        "mesmo nome). Publique/atualize pra gravar o ID.", "aviso")
+                tela.clicar_por_texto(item["titulo"][:60], exato=False)
             page.wait_for_timeout(2000)
             tela.shot("ck_produto")
 

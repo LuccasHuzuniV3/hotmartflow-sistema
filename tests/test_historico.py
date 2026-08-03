@@ -79,6 +79,23 @@ def test_restaurar_sem_backup_retorna_zero():
     assert historico.restaurar_ultimo_backup() == 0
 
 
+def test_hotmart_id_de_acha_o_id_do_publicado():
+    historico.registrar(rede="REDE 8", pais="Croacia", titulo="10 HEBREJSKIH",
+                        tipo="Principal", hotmart_id="8240905")
+    historico.registrar(rede="REDE 8", pais="Alemao", titulo="Outro",
+                        tipo="Principal", hotmart_id="8240882")
+    assert historico.hotmart_id_de("REDE 8", "Croacia", "10 HEBREJSKIH") == "8240905"
+    # não achou -> ''
+    assert historico.hotmart_id_de("REDE 8", "Franca", "10 HEBREJSKIH") == ""
+
+
+def test_hotmart_id_de_ignora_registro_sem_id_e_pega_o_mais_recente():
+    # 1º sem ID (falhou capturar), 2º com ID -> retorna o com ID (mais recente)
+    historico.registrar(rede="R", pais="Brasil", titulo="T", tipo="Principal", hotmart_id="")
+    historico.registrar(rede="R", pais="Brasil", titulo="T", tipo="Principal", hotmart_id="8109999")
+    assert historico.hotmart_id_de("R", "Brasil", "T") == "8109999"
+
+
 def test_remover_registro_tira_so_o_item_certo():
     historico.registrar(rede="R", pais="Brasil", titulo="TESTE", tipo="Principal")
     historico.registrar(rede="R", pais="Brasil", titulo="Real", tipo="Principal")

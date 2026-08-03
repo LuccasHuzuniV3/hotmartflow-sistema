@@ -58,6 +58,17 @@ def _parse(arquivo: Path) -> list[dict]:
     return out
 
 
+def hotmart_id_de(rede: str, pais: str, titulo: str) -> str:
+    """ID da Hotmart do produto publicado (casa rede+país+título) — pro checkout
+    clicar no resultado CERTO (venda ativa) e não num rascunho de mesmo nome.
+    Pega o mais recente; '' se não achar."""
+    for r in reversed(listar()):
+        if (r.get("rede") == rede and r.get("pais") == pais
+                and r.get("titulo") == titulo and (r.get("hotmart_id") or "").strip()):
+            return r["hotmart_id"].strip()
+    return ""
+
+
 def agrupado() -> dict:
     """{rede: {pais: [registros...]}} — pra montar a árvore rede -> país -> títulos."""
     arv: dict[str, dict] = {}

@@ -29,7 +29,7 @@ STATUS_VALIDOS = ("rascunho", "textos_gerados", "revisado", "publicando", "publi
 
 # Campos editaveis via API (tudo que NAO esta aqui e gerenciado internamente)
 CAMPOS_PRODUTO = {"titulo_pt", "descricao_pt"}
-CAMPOS_ITEM = {"titulo", "descricao", "preco", "status", "capa", "erro"}
+CAMPOS_ITEM = {"titulo", "descricao", "preco", "status", "capa", "erro", "hotmart_id"}
 
 
 class ProdutoError(Exception):
