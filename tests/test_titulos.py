@@ -60,3 +60,45 @@ def test_numero_do_produto():
     assert titulos.numero_do_produto("OPSELL 2 - REDE 1") == 2
     assert titulos.numero_do_produto("UPSELL 3") == 3
     assert titulos.numero_do_produto("PRINCIPAL REDE 1") is None
+
+
+# --- montar_lista_titulos (export por país) ---
+
+def _fila_exemplo():
+    return [
+        {"tipo": "Principal", "numero": None, "idiomas": [
+            {"codigo": "de", "pais": "Alemão", "titulo": "PRINC DE",
+             "anexos": [{"papel": "bonus", "numero": 1, "titulo": "BONUS1 DE"}]},
+            {"codigo": "pt", "pais": "Brasil", "titulo": "PRINC BR", "anexos": []},
+        ]},
+        {"tipo": "Order Bump", "numero": 1, "idiomas": [
+            {"codigo": "de", "pais": "Alemão", "titulo": "BUMP1 DE", "anexos": []},
+        ]},
+        {"tipo": "Upsell", "numero": 1, "idiomas": [
+            {"codigo": "de", "pais": "Alemão", "titulo": "UP1 DE",
+             "anexos": [{"papel": "extra", "numero": 1, "titulo": "EXTRA1 DE"}]},
+        ]},
+    ]
+
+
+def test_montar_lista_agrupa_por_pais_com_todos_os_tipos():
+    txt = titulos.montar_lista_titulos(_fila_exemplo())
+    assert "ALEMÃO" in txt and "BRASIL" in txt
+    bloco_de = txt.split("-" * 56)[0]
+    # ordem: PRINCIPAL, ORDER BUMP 1, UPSELL 1, BONUS 1, EXTRA 1
+    assert bloco_de.index("PRINCIPAL: PRINC DE") < bloco_de.index("ORDER BUMP 1: BUMP1 DE")
+    assert bloco_de.index("ORDER BUMP 1: BUMP1 DE") < bloco_de.index("UPSELL 1: UP1 DE")
+    assert bloco_de.index("UPSELL 1: UP1 DE") < bloco_de.index("BONUS 1: BONUS1 DE")
+    assert bloco_de.index("BONUS 1: BONUS1 DE") < bloco_de.index("EXTRA 1: EXTRA1 DE")
+
+
+def test_montar_lista_pais_sem_traducao_sai_em_branco():
+    fila = [{"tipo": "Principal", "numero": None, "idiomas": [
+        {"codigo": "pt", "pais": "Brasil", "titulo": "", "anexos": []}]}]
+    txt = titulos.montar_lista_titulos(fila)
+    assert "BRASIL" in txt
+    assert "PRINCIPAL:" in txt   # rótulo aparece mesmo sem título
+
+
+def test_montar_lista_vazia():
+    assert titulos.montar_lista_titulos([]) == ""

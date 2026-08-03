@@ -534,6 +534,7 @@ function renderResumoGeral() {
     ${semCapa ? `<span class="rg-sep">·</span><span class="rg-item rg-alerta">${semCapa} sem capa</span>` : ""}
     ${comErro ? `<span class="rg-sep">·</span><span class="rg-item rg-erro">${comErro} com erro</span>` : ""}
     ${faltaTexto ? `<button class="rg-completar" data-acao="completar-faltantes" title="Gera/traduz só os ${faltaTexto} que ficaram faltando (os que deram erro). Não mexe no que já está pronto.">🔁 Completar faltantes (${faltaTexto})</button>` : ""}
+    <button class="rg-exportar" data-acao="exportar-titulos" title="Gera uma lista dos títulos traduzidos (Principal, Order Bumps, Upsells, Bônus e Extras) agrupados por país — pronta pra copiar.">📋 Exportar títulos</button>
     <button class="rg-limpar" data-acao="limpar-tudo" title="Remove todos os produtos da fila (não apaga os PDFs/capas do disco)">🗑 Apagar todos</button>
     <span class="rg-barra" title="azul = traduzido · verde = revisado · verde forte = publicado">
       <i class="b-trad" style="width:${pct(comTextos - revisados)}%"></i>
@@ -548,6 +549,14 @@ $("resumo-geral").addEventListener("click", async (e) => {
     await processarTudo();
     return;
   }
+  if (e.target.closest("[data-acao='exportar-titulos']")) {
+    try {
+      const r = await api("GET", "/api/produtos/titulos-export");
+      if (!r.texto || !r.texto.trim()) { toast("Nada pra exportar ainda.", "erro"); return; }
+      mostrarExportTitulos(r.texto);
+    } catch (err) { toast(err.message, "erro"); }
+    return;
+  }
   if (!e.target.closest("[data-acao='limpar-tudo']")) return;
   const total = estado.produtos.length;
   if (!confirm(`Apagar TODOS os ${total} produtos da fila?\n\nOs arquivos PDF/capas NÃO são apagados — só a fila daqui. Você pode reimportar a pasta depois.`)) return;
@@ -558,6 +567,49 @@ $("resumo-geral").addEventListener("click", async (e) => {
     toast(`${r.removidos} produto(s) removido(s) da fila.`, "ok");
   } catch (err) { toast(err.message, "erro"); }
 });
+
+function mostrarExportTitulos(texto) {
+  document.getElementById("export-overlay")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "export-overlay";
+  ov.className = "export-overlay";
+  ov.innerHTML = `
+    <div class="export-modal">
+      <div class="export-cab">
+        <b>📋 Títulos traduzidos (por país)</b>
+        <button class="export-fechar" title="Fechar">✕</button>
+      </div>
+      <textarea class="export-txt" readonly spellcheck="false"></textarea>
+      <div class="export-acoes">
+        <button class="export-copiar">Copiar tudo</button>
+        <button class="export-baixar">Baixar .txt</button>
+      </div>
+    </div>`;
+  ov.querySelector(".export-txt").value = texto;
+  const fechar = () => ov.remove();
+  ov.addEventListener("click", (e) => { if (e.target === ov) fechar(); });
+  ov.querySelector(".export-fechar").addEventListener("click", fechar);
+  ov.querySelector(".export-copiar").addEventListener("click", async (e) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      e.target.textContent = "Copiado! ✓";
+      setTimeout(() => { e.target.textContent = "Copiar tudo"; }, 1500);
+    } catch {
+      const ta = ov.querySelector(".export-txt");
+      ta.focus(); ta.select();
+      toast("Selecionei o texto — use Ctrl+C.", "ok");
+    }
+  });
+  ov.querySelector(".export-baixar").addEventListener("click", () => {
+    const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "titulos-traduzidos.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  document.body.appendChild(ov);
+}
 
 function atualizarSelectPastas() {
   const sel = $("titulos-pasta");

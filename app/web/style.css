@@ -264,6 +264,45 @@ textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
 }
 .rg-completar:hover { filter: brightness(1.1); }
 .rg-completar + .rg-limpar { margin-left: 8px; }
+.rg-exportar {
+  margin-left: auto; background: var(--bg-input); border: 1px solid var(--borda);
+  color: var(--texto-2); font: inherit; font-size: 12px; padding: 4px 12px;
+  border-radius: 8px; cursor: pointer; transition: all .15s;
+}
+.rg-exportar:hover { border-color: var(--info); color: var(--texto); }
+.rg-completar + .rg-exportar { margin-left: 8px; }
+.rg-exportar + .rg-limpar { margin-left: 8px; }
+
+.export-overlay {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.export-modal {
+  background: var(--bg-card); border: 1px solid var(--borda); border-radius: 14px;
+  width: min(760px, 100%); max-height: 85vh; display: flex; flex-direction: column;
+  padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.export-cab { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.export-cab b { font-size: 15px; }
+.export-fechar {
+  background: none; border: none; color: var(--texto-2); font-size: 18px; cursor: pointer;
+  line-height: 1; padding: 2px 6px; border-radius: 6px;
+}
+.export-fechar:hover { color: var(--erro); background: var(--bg-hover); }
+.export-txt {
+  flex: 1; min-height: 320px; resize: vertical; width: 100%; box-sizing: border-box;
+  background: var(--bg-input); border: 1px solid var(--borda); border-radius: 10px;
+  color: var(--texto); font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; line-height: 1.55; padding: 12px 14px; white-space: pre;
+}
+.export-acoes { display: flex; gap: 8px; margin-top: 12px; }
+.export-acoes button {
+  background: var(--info); border: 1px solid var(--info); color: #fff; font: inherit;
+  font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  transition: filter .15s;
+}
+.export-acoes .export-baixar { background: var(--bg-input); border-color: var(--borda); color: var(--texto-2); }
+.export-acoes button:hover { filter: brightness(1.12); }
 .rg-barra {
   flex-basis: 100%; height: 6px; border-radius: 3px; background: var(--bg-input);
   overflow: hidden; display: flex; margin-top: 2px;

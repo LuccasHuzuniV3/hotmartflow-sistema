@@ -309,6 +309,13 @@ def produtos_listar():
     return produtos.listar()
 
 
+@app.get("/api/produtos/titulos-export")
+def produtos_titulos_export():
+    """Lista os títulos traduzidos por país (Principal/Bumps/Upsells/Bônus/Extras)
+    num texto pronto pra copiar/colar."""
+    return {"texto": titulos.montar_lista_titulos(produtos.listar())}
+
+
 @app.delete("/api/produtos")
 def produtos_remover_todos():
     """Limpa a fila inteira (nao apaga os arquivos PDF/capas em disco)."""

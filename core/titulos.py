@@ -78,6 +78,65 @@ def parse_titulos(texto: str) -> dict:
     return resultado
 
 
+def montar_lista_titulos(lista_produtos: list[dict]) -> str:
+    """Monta a lista de títulos TRADUZIDOS agrupada por país, pra colar/conferir:
+
+        ALEMÃO
+        PRINCIPAL: ...
+        ORDER BUMP 1: ...
+        UPSELL 1: ...
+        BONUS 1: ...
+        EXTRA 1: ...
+        --------------------------------------------------------
+        BRASIL
+        ...
+
+    Junta todos os produtos da fila. Ordem dentro do país: Principal, Order
+    Bumps, Upsells, Bônus (do principal), Extras (dos upsells). Países na ordem
+    canônica dos idiomas. Título vazio (ainda não traduzido) sai em branco.
+    """
+    from core import idiomas as _idiomas
+
+    # codigo -> {"pais": str, "itens": [(ordem, rotulo, titulo)]}
+    paises: dict[str, dict] = {}
+
+    def _add(codigo, pais, ordem, rotulo, titulo):
+        p = paises.setdefault(codigo, {"pais": pais, "itens": []})
+        p["itens"].append((ordem, rotulo, (titulo or "").strip()))
+
+    for prod in lista_produtos:
+        tipo = prod.get("tipo")
+        numero = prod.get("numero") or 0
+        for item in prod.get("idiomas", []):
+            cod = item.get("codigo", "")
+            pais = item.get("pais", "")
+            tit = item.get("titulo", "")
+            if tipo == "Principal":
+                _add(cod, pais, (0, 0), "PRINCIPAL", tit)
+                for a in item.get("anexos", []):
+                    if a.get("papel") == "bonus":
+                        num = a.get("numero") or 0
+                        _add(cod, pais, (3, num), f"BONUS {num}", a.get("titulo"))
+            elif tipo == "Order Bump":
+                _add(cod, pais, (1, numero), f"ORDER BUMP {numero}", tit)
+            elif tipo == "Upsell":
+                _add(cod, pais, (2, numero), f"UPSELL {numero}", tit)
+                for a in item.get("anexos", []):
+                    if a.get("papel") == "extra":
+                        num = a.get("numero") or 0
+                        _add(cod, pais, (4, num), f"EXTRA {num}", a.get("titulo"))
+
+    sep = "-" * 56
+    blocos = []
+    for cod in sorted(paises, key=_idiomas.ordem):
+        info = paises[cod]
+        linhas = [info["pais"].upper()]
+        for _ordem, rotulo, titulo in sorted(info["itens"], key=lambda x: x[0]):
+            linhas.append(f"{rotulo}: {titulo}")
+        blocos.append("\n".join(linhas))
+    return ("\n" + sep + "\n").join(blocos)
+
+
 def numero_do_produto(titulo_arquivo: str) -> int | None:
     """Extrai o numero do produto do titulo vindo do nome do arquivo.
 
