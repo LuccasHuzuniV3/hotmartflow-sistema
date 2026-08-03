@@ -397,6 +397,13 @@ def _rodar(job: Job, produto: dict, item: dict) -> None:
                     rede=rede, pais=item["pais"],
                     titulo=item["titulo"] or produto["titulo_pt"],
                     tipo=tipo, hotmart_id=job.hotmart_id)
+                # grava tambem os extras (bonus do upsell) pro export por pais
+                for anexo in item.get("anexos", []):
+                    if anexo.get("papel") == "extra" and (anexo.get("titulo") or "").strip():
+                        num = anexo.get("numero") or ""
+                        historico.registrar(
+                            rede=rede, pais=item["pais"], titulo=anexo["titulo"],
+                            tipo=f"Extra {num}".strip())
             except Exception:
                 pass  # historico nunca derruba a publicacao
         else:

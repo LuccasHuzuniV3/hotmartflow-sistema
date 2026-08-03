@@ -78,63 +78,76 @@ def parse_titulos(texto: str) -> dict:
     return resultado
 
 
-def montar_lista_titulos(lista_produtos: list[dict]) -> str:
-    """Monta a lista de títulos TRADUZIDOS agrupada por país, pra colar/conferir:
+def _classificar_tipo_export(tipo: str):
+    """(ordem, rótulo) do tipo pro export, ou None se não entra (Order Bump/Bônus).
+    Só Principal, Upsells e Extras."""
+    tl = (tipo or "").strip().lower()
+    if tl == "principal":
+        return (0, 0), "PRINCIPAL"
+    m = re.match(r"upsell\s*(\d+)", tl)
+    if m:
+        return (1, int(m.group(1))), f"UPSELL {m.group(1)}"
+    if tl == "upsell":
+        return (1, 0), "UPSELL"
+    m = re.match(r"extra\s*(\d+)", tl)
+    if m:
+        return (2, int(m.group(1))), f"EXTRA {m.group(1)}"
+    if tl == "extra":
+        return (2, 0), "EXTRA"
+    return None
+
+
+def montar_lista_titulos(registros: list[dict]) -> str:
+    """Monta a lista de títulos JÁ PUBLICADOS (do histórico) por país, pra colar:
 
         ALEMÃO
         PRINCIPAL: ...
-        ORDER BUMP 1: ...
         UPSELL 1: ...
-        BONUS 1: ...
         EXTRA 1: ...
         --------------------------------------------------------
         BRASIL
         ...
 
-    Junta todos os produtos da fila. Ordem dentro do país: Principal, Order
-    Bumps, Upsells, Bônus (do principal), Extras (dos upsells). Países na ordem
-    canônica dos idiomas. Título vazio (ainda não traduzido) sai em branco.
+    Só Principal, Upsells e Extras (Order Bumps e Bônus do principal ficam de
+    fora). `registros` = histórico (historico.listar()). Agrupa por rede -> país;
+    o cabeçalho da rede só aparece se houver mais de uma. Dedupe por rede+país+
+    tipo: vence o mais recente (última linha do histórico). País vazio sai com o
+    rótulo em branco.
     """
     from core import idiomas as _idiomas
 
-    # codigo -> {"pais": str, "itens": [(ordem, rotulo, titulo)]}
-    paises: dict[str, dict] = {}
+    # rede -> pais -> {ordem: (rotulo, titulo)}  (dedupe: última linha vence)
+    redes: dict[str, dict] = {}
+    for r in registros:
+        cls = _classificar_tipo_export(r.get("tipo"))
+        if not cls:
+            continue
+        ordem, rotulo = cls
+        rede = r.get("rede", "")
+        pais = r.get("pais", "")
+        titulo = (r.get("titulo") or "").strip()
+        redes.setdefault(rede, {}).setdefault(pais, {})[ordem] = (rotulo, titulo)
 
-    def _add(codigo, pais, ordem, rotulo, titulo):
-        p = paises.setdefault(codigo, {"pais": pais, "itens": []})
-        p["itens"].append((ordem, rotulo, (titulo or "").strip()))
-
-    for prod in lista_produtos:
-        tipo = prod.get("tipo")
-        numero = prod.get("numero") or 0
-        for item in prod.get("idiomas", []):
-            cod = item.get("codigo", "")
-            pais = item.get("pais", "")
-            tit = item.get("titulo", "")
-            if tipo == "Principal":
-                _add(cod, pais, (0, 0), "PRINCIPAL", tit)
-                for a in item.get("anexos", []):
-                    if a.get("papel") == "bonus":
-                        num = a.get("numero") or 0
-                        _add(cod, pais, (3, num), f"BONUS {num}", a.get("titulo"))
-            elif tipo == "Order Bump":
-                _add(cod, pais, (1, numero), f"ORDER BUMP {numero}", tit)
-            elif tipo == "Upsell":
-                _add(cod, pais, (2, numero), f"UPSELL {numero}", tit)
-                for a in item.get("anexos", []):
-                    if a.get("papel") == "extra":
-                        num = a.get("numero") or 0
-                        _add(cod, pais, (4, num), f"EXTRA {num}", a.get("titulo"))
+    def _ord_pais(nome: str) -> int:
+        info = _idiomas.por_pais(nome)
+        return _idiomas.ordem(info["codigo"]) if info else len(_idiomas.IDIOMAS)
 
     sep = "-" * 56
-    blocos = []
-    for cod in sorted(paises, key=_idiomas.ordem):
-        info = paises[cod]
-        linhas = [info["pais"].upper()]
-        for _ordem, rotulo, titulo in sorted(info["itens"], key=lambda x: x[0]):
-            linhas.append(f"{rotulo}: {titulo}")
-        blocos.append("\n".join(linhas))
-    return ("\n" + sep + "\n").join(blocos)
+    multi = len(redes) > 1
+    partes = []
+    for rede in sorted(redes):
+        if multi:
+            partes.append(f"===== {rede.upper()} =====")
+        blocos = []
+        for pais in sorted(redes[rede], key=_ord_pais):
+            itens = redes[rede][pais]
+            linhas = [pais.upper()]
+            for ordem in sorted(itens):
+                rotulo, titulo = itens[ordem]
+                linhas.append(f"{rotulo}: {titulo}")
+            blocos.append("\n".join(linhas))
+        partes.append(("\n" + sep + "\n").join(blocos))
+    return "\n\n".join(partes)
 
 
 def numero_do_produto(titulo_arquivo: str) -> int | None:

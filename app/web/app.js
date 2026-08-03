@@ -534,7 +534,7 @@ function renderResumoGeral() {
     ${semCapa ? `<span class="rg-sep">·</span><span class="rg-item rg-alerta">${semCapa} sem capa</span>` : ""}
     ${comErro ? `<span class="rg-sep">·</span><span class="rg-item rg-erro">${comErro} com erro</span>` : ""}
     ${faltaTexto ? `<button class="rg-completar" data-acao="completar-faltantes" title="Gera/traduz só os ${faltaTexto} que ficaram faltando (os que deram erro). Não mexe no que já está pronto.">🔁 Completar faltantes (${faltaTexto})</button>` : ""}
-    <button class="rg-exportar" data-acao="exportar-titulos" title="Gera uma lista dos títulos traduzidos (Principal, Order Bumps, Upsells, Bônus e Extras) agrupados por país — pronta pra copiar.">📋 Exportar títulos</button>
+    <button class="rg-exportar" data-acao="exportar-titulos" title="Gera uma lista dos títulos JÁ PUBLICADOS (do histórico): Principal, Upsell e Extra do upsell, agrupados por país — pronta pra copiar.">📋 Exportar títulos</button>
     <button class="rg-limpar" data-acao="limpar-tudo" title="Remove todos os produtos da fila (não apaga os PDFs/capas do disco)">🗑 Apagar todos</button>
     <span class="rg-barra" title="azul = traduzido · verde = revisado · verde forte = publicado">
       <i class="b-trad" style="width:${pct(comTextos - revisados)}%"></i>

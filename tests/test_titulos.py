@@ -62,43 +62,52 @@ def test_numero_do_produto():
     assert titulos.numero_do_produto("PRINCIPAL REDE 1") is None
 
 
-# --- montar_lista_titulos (export por país) ---
+# --- montar_lista_titulos (export do HISTÓRICO, por país) ---
 
-def _fila_exemplo():
+def _hist_exemplo():
+    # registros do histórico (como historico.listar() devolve)
     return [
-        {"tipo": "Principal", "numero": None, "idiomas": [
-            {"codigo": "de", "pais": "Alemão", "titulo": "PRINC DE",
-             "anexos": [{"papel": "bonus", "numero": 1, "titulo": "BONUS1 DE"}]},
-            {"codigo": "pt", "pais": "Brasil", "titulo": "PRINC BR", "anexos": []},
-        ]},
-        {"tipo": "Order Bump", "numero": 1, "idiomas": [
-            {"codigo": "de", "pais": "Alemão", "titulo": "BUMP1 DE", "anexos": []},
-        ]},
-        {"tipo": "Upsell", "numero": 1, "idiomas": [
-            {"codigo": "de", "pais": "Alemão", "titulo": "UP1 DE",
-             "anexos": [{"papel": "extra", "numero": 1, "titulo": "EXTRA1 DE"}]},
-        ]},
+        {"rede": "REDE 8", "pais": "Alemão", "tipo": "Principal", "titulo": "PRINC DE"},
+        {"rede": "REDE 8", "pais": "Alemão", "tipo": "Order Bump 1", "titulo": "BUMP1 DE"},
+        {"rede": "REDE 8", "pais": "Alemão", "tipo": "Upsell 1", "titulo": "UP1 DE"},
+        {"rede": "REDE 8", "pais": "Alemão", "tipo": "Extra 1", "titulo": "EXTRA1 DE"},
+        {"rede": "REDE 8", "pais": "Brasil", "tipo": "Principal", "titulo": "PRINC BR"},
     ]
 
 
-def test_montar_lista_agrupa_por_pais_com_todos_os_tipos():
-    txt = titulos.montar_lista_titulos(_fila_exemplo())
+def test_export_so_principal_upsell_extra_e_ignora_bump():
+    txt = titulos.montar_lista_titulos(_hist_exemplo())
     assert "ALEMÃO" in txt and "BRASIL" in txt
-    bloco_de = txt.split("-" * 56)[0]
-    # ordem: PRINCIPAL, ORDER BUMP 1, UPSELL 1, BONUS 1, EXTRA 1
-    assert bloco_de.index("PRINCIPAL: PRINC DE") < bloco_de.index("ORDER BUMP 1: BUMP1 DE")
-    assert bloco_de.index("ORDER BUMP 1: BUMP1 DE") < bloco_de.index("UPSELL 1: UP1 DE")
-    assert bloco_de.index("UPSELL 1: UP1 DE") < bloco_de.index("BONUS 1: BONUS1 DE")
-    assert bloco_de.index("BONUS 1: BONUS1 DE") < bloco_de.index("EXTRA 1: EXTRA1 DE")
+    bloco_de = [b for b in txt.split("-" * 56) if "ALEMÃO" in b][0]
+    # ordem: PRINCIPAL, UPSELL 1, EXTRA 1 — e Order Bump NÃO aparece
+    assert "BUMP" not in txt.upper()
+    assert bloco_de.index("PRINCIPAL: PRINC DE") < bloco_de.index("UPSELL 1: UP1 DE")
+    assert bloco_de.index("UPSELL 1: UP1 DE") < bloco_de.index("EXTRA 1: EXTRA1 DE")
+    assert "BUMP1 DE" not in txt
 
 
-def test_montar_lista_pais_sem_traducao_sai_em_branco():
-    fila = [{"tipo": "Principal", "numero": None, "idiomas": [
-        {"codigo": "pt", "pais": "Brasil", "titulo": "", "anexos": []}]}]
-    txt = titulos.montar_lista_titulos(fila)
-    assert "BRASIL" in txt
-    assert "PRINCIPAL:" in txt   # rótulo aparece mesmo sem título
+def test_export_dedupe_pega_o_mais_recente():
+    regs = [
+        {"rede": "R", "pais": "Brasil", "tipo": "Principal", "titulo": "VELHO"},
+        {"rede": "R", "pais": "Brasil", "tipo": "Principal", "titulo": "NOVO"},
+    ]
+    txt = titulos.montar_lista_titulos(regs)
+    assert "PRINCIPAL: NOVO" in txt and "VELHO" not in txt
 
 
-def test_montar_lista_vazia():
+def test_export_varias_redes_ganha_cabecalho():
+    regs = [
+        {"rede": "REDE 7", "pais": "Brasil", "tipo": "Principal", "titulo": "P7"},
+        {"rede": "REDE 8", "pais": "Brasil", "tipo": "Principal", "titulo": "P8"},
+    ]
+    txt = titulos.montar_lista_titulos(regs)
+    assert "===== REDE 7 =====" in txt and "===== REDE 8 =====" in txt
+
+
+def test_export_uma_rede_sem_cabecalho():
+    txt = titulos.montar_lista_titulos(_hist_exemplo())
+    assert "=====" not in txt   # rede única não mostra cabeçalho
+
+
+def test_export_vazio():
     assert titulos.montar_lista_titulos([]) == ""

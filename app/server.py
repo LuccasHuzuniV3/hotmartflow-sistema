@@ -311,9 +311,9 @@ def produtos_listar():
 
 @app.get("/api/produtos/titulos-export")
 def produtos_titulos_export():
-    """Lista os títulos traduzidos por país (Principal/Bumps/Upsells/Bônus/Extras)
-    num texto pronto pra copiar/colar."""
-    return {"texto": titulos.montar_lista_titulos(produtos.listar())}
+    """Lista os títulos JÁ PUBLICADOS (do histórico) por país — só Principal,
+    Upsells e Extras — num texto pronto pra copiar/colar."""
+    return {"texto": titulos.montar_lista_titulos(historico.listar())}
 
 
 @app.delete("/api/produtos")
