@@ -1610,33 +1610,54 @@ def _executar_checkout(job: Job, produto: dict, item: dict) -> None:
             tela.shot("ck_editor")
 
             # ---- 3. order bumps (um componente por bump) --------------------
+            bumps_ok = 0
             for n_b, bump in enumerate(bumps, 1):
-                job.marcar_etapa("ck_bump",
-                                 f"Order Bump {n_b}/{len(bumps)}: {bump['titulo'][:45]}...")
-                tela.clicar_por_texto("Order Bump")
-                page.wait_for_timeout(800)
-                tela.clicar("ck_btn_escolher_produto", timeout=10000)
-                page.wait_for_timeout(800)
-                tela.preencher("ck_busca", bump["titulo"], delay=DELAY_CK)
-                page.wait_for_timeout(1500)
-                # o resultado vem RECOLHIDO (accordion) — expande o card antes
-                # do radio "Preço base" existir na tela
                 try:
-                    tela.clicar_por_texto(bump["titulo"][:60], exato=False, timeout=8000)
+                    job.marcar_etapa("ck_bump",
+                                     f"Order Bump {n_b}/{len(bumps)}: {bump['titulo'][:45]}...")
+                    tela.clicar_por_texto("Order Bump")
+                    page.wait_for_timeout(800)
+                    tela.clicar("ck_btn_escolher_produto", timeout=10000)
+                    page.wait_for_timeout(800)
+                    tela.preencher("ck_busca", bump["titulo"], delay=DELAY_CK)
+                    page.wait_for_timeout(1500)
+                    # o resultado vem RECOLHIDO (accordion) — expande o card antes
+                    # do radio "Preço base" existir na tela
+                    try:
+                        tela.clicar_por_texto(bump["titulo"][:60], exato=False, timeout=8000)
+                    except RoboError:
+                        tela.clicar("ck_card_resultado", timeout=5000)  # fallback: 1o card
+                    page.wait_for_timeout(800)
+                    tela.clicar("ck_radio_preco_base", timeout=10000)  # oferta "Preço base"
+                    tela.clicar("ck_btn_selecionar", timeout=8000)
+                    page.wait_for_timeout(800)
+                    # preco "de" fixo 89,90 — money-input direita->esquerda: "8990"
+                    tela.preencher("ck_campo_preco_de", "8990")
+                    tela.preencher("ck_campo_descricao", bump["descricao"], delay=DELAY_CK)
+                    tela.shot(f"ck_bump_{n_b}")
+                    tela.clicar("ck_btn_inserir", timeout=8000)
+                    page.wait_for_timeout(1200)
+                    bumps_ok += 1
                 except RoboError:
-                    tela.clicar("ck_card_resultado", timeout=5000)  # fallback: 1o card
-                page.wait_for_timeout(800)
-                tela.clicar("ck_radio_preco_base", timeout=10000)  # oferta "Preço base"
-                tela.clicar("ck_btn_selecionar", timeout=8000)
-                page.wait_for_timeout(800)
-                # preco "de" fixo 89,90 — money-input direita->esquerda: "8990"
-                tela.preencher("ck_campo_preco_de", "8990")
-                tela.preencher("ck_campo_descricao", bump["descricao"], delay=DELAY_CK)
-                tela.shot(f"ck_bump_{n_b}")
-                tela.clicar("ck_btn_inserir", timeout=8000)
-                page.wait_for_timeout(1200)
+                    # nao achou/nao deu pra inserir esse bump -> PULA pro proximo
+                    # (nao derruba a pagina inteira). fecha o modal que ficou aberto
+                    # pra nao travar o proximo bump.
+                    job.log(f"Order Bump {n_b} ('{bump['titulo'][:40]}') não encontrado no "
+                            f"checkout — pulei pro próximo.", "aviso")
+                    tela.shot(f"ck_bump_{n_b}_pulado")
+                    try:
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(500)
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                    continue
             if not bumps:
                 job.log("Nenhum Order Bump publicado nesse idioma — página sai sem bumps.", "aviso")
+            elif bumps_ok < len(bumps):
+                job.log(f"{bumps_ok}/{len(bumps)} Order Bumps inseridos no checkout "
+                        f"({len(bumps) - bumps_ok} pulados).", "aviso")
 
             # ---- 4. fundo preto ---------------------------------------------
             job.marcar_etapa("ck_background", "Background: cor de fundo preta (#000000)...")
