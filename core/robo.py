@@ -1419,12 +1419,15 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                 tela.shot(f"coproducao_{n_cop}_revisao")
                 job.lap("revisao: concordar")
 
-                # Digita o código 2FA e ENVIA. Se a Hotmart RECUSAR o código, a tela do
-                # código continua na frente (não avança) — aí tenta de novo com um código
-                # novo. Nunca seguimos em frente sem CONFIRMAR o convite (senão o produto
-                # sai publicado SEM coprodução, que era o bug).
+                # Digita o código 2FA e ENVIA. Sinal CONFIÁVEL de sucesso: o campo do
+                # código SOME da tela (a Hotmart avança). Se o código for recusado, o
+                # campo CONTINUA na frente com o erro -> tenta de novo com um código novo.
+                # Só seguimos pra finalizar se o convite realmente enviou; senão o produto
+                # vira 'erro' (nunca publica SEM coprodução, que era o bug original).
                 MAX_TENT_2FA = 3
                 inicio_2fa = time.time()
+                convite_enviado = False
+                tentativas = 0
                 for tent_2fa in range(1, MAX_TENT_2FA + 1):
                     try:
                         codigo = _obter_codigo_2fa(job, s, desde_ts=inicio_2fa,
@@ -1432,7 +1435,8 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     except RoboError:
                         if tent_2fa == 1:
                             raise  # 1ª sem código: comportamento antigo (pula o produto)
-                        break      # retry sem código novo -> cai na checagem definitiva
+                        break      # retry sem código novo -> sai e erra o produto
+                    tentativas = tent_2fa
                     job.lap("revisao: ESPERAR o e-mail do 2FA")
                     tela.preencher("campo_codigo_2fa", codigo)
                     codigos_usados.add(codigo)
@@ -1441,32 +1445,22 @@ def _executar_navegador(job: Job, produto: dict, item: dict) -> None:
                     job.lap("revisao: enviar convite com código")
                     page.wait_for_timeout(3000)   # submete o convite com o 2FA
                     tela.shot(f"coproducao_{n_cop}_enviada_tent{tent_2fa}")
-                    # o campo do código SUMIU => avançou (código aceito). Continua visível
-                    # => código recusado -> tenta de novo com um código novo.
-                    if not tela._elemento_visivel("campo_codigo_2fa", timeout=2500):
+                    # campo do código SUMIU => código ACEITO e convite enviou.
+                    if not tela._elemento_visivel("campo_codigo_2fa", timeout=3000):
+                        convite_enviado = True
                         break
                     if tent_2fa < MAX_TENT_2FA:
                         job.log(f"Código 2FA recusado (tentativa {tent_2fa}/{MAX_TENT_2FA}) — "
                                 f"vou pegar um código novo e tentar de novo.", "aviso")
 
-                # CONFIRMAÇÃO DEFINITIVA: o convite TEM que aparecer como Pendente na
-                # lista de coproduções. Se não aparecer, o 2FA falhou de vez -> ERRA o
-                # produto (NÃO finaliza), pra JAMAIS publicar sem a coprodução.
-                tela.ir_para_coproducao()
-                try:
-                    page.wait_for_load_state("networkidle", timeout=8000)
-                except Exception:
-                    pass
-                page.wait_for_timeout(1500)
-                if not (tela.existe_texto(coprod["email"], timeout=6000)
-                        and tela.existe_texto("Pendente", timeout=3000)):
+                if not convite_enviado:
                     tela.shot(f"coproducao_{n_cop}_FALHOU")
                     raise RoboError(
                         f"Não consegui adicionar o coprodutor {coprod['email']}: o código 2FA "
-                        f"foi recusado (tentei {MAX_TENT_2FA}x) e o convite não entrou. NÃO "
+                        f"foi recusado (tentei {tentativas}x) e o convite não entrou. NÃO "
                         f"finalizei o cadastro pra não publicar SEM coprodução — o produto ficou "
                         f"como 'erro', é só reprocessar.")
-                job.log(f"Coprodutor {coprod['email']} confirmado como Pendente ✔", "ok")
+                job.log(f"Coprodutor {coprod['email']} convidado com sucesso ✔", "ok")
 
             # ---- 7. cupons no PRINCIPAL — ANTES de finalizar (depois de enviar
             # pra análise a tela pode travar). Cada cupom ativo com a % da MOEDA
