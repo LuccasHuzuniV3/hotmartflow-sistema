@@ -375,6 +375,16 @@ def _rodar_checkout(job: Job, produto: dict, item: dict) -> None:
 
 
 def _rodar(job: Job, produto: dict, item: dict) -> None:
+    # CADA thread do robô precisa do SEU PRÓPRIO event loop. O Playwright sync roda
+    # num greenlet com asyncio; sem um loop próprio nesta thread, ele pode encontrar
+    # um loop "já rodando" (o do uvicorn/servidor ou o de um job anterior) e estourar
+    # "This event loop is already running" — travando TODA publicação até reiniciar.
+    # new_event_loop por thread deixa isso determinístico e isolado.
+    try:
+        import asyncio
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    except Exception:
+        pass
     if job.modo == "checkout":
         _rodar_checkout(job, produto, item)
         return
