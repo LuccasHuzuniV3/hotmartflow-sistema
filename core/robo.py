@@ -923,9 +923,12 @@ class Tela:
             for n, arq in enumerate(arquivos, 1):
                 nome = Path(arq).name
                 self.job.log(f"Enviando arquivo {n}/{len(arquivos)}: {nome}...")
-                with self.page.expect_file_chooser() as fc:
-                    self.clicar("btn_selecione_arquivo")
-                fc.value.set_files(arq)
+                # set_input_files DIRETO no <input type=file> (mesmo oculto), 1 por vez.
+                # NÃO usa expect_file_chooser: esse construtor do Playwright sync + CDP
+                # estoura "This event loop is already running". Cada set dispara o
+                # mesmo 'change' do dialog e ADICIONA o arquivo na lista (não substitui).
+                campo = self._input_arquivo("input_pdf")
+                campo.set_input_files(arq)
                 # espera esse arquivo aparecer na lista antes de mandar o proximo
                 if not self.existe_texto(nome, timeout=300_000):
                     self.shot(f"erro_upload_{n}")
@@ -933,6 +936,26 @@ class Tela:
                 self.page.wait_for_timeout(1500)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _input_arquivo(self, chave: str, timeout: int = 15000):
+        """Acha o <input type=file> da chave em QUALQUER contexto (página + iframes),
+        SEM exigir visibilidade — file inputs costumam ser ocultos, e set_input_files
+        funciona em input oculto. Espera ele existir no DOM até 'timeout'."""
+        css = hm.MAPA[chave][0]["css"]
+        fim = time.time() + timeout / 1000.0
+        while True:
+            for ctx in self._contextos():
+                try:
+                    loc = ctx.locator(css)
+                    if loc.count() > 0:
+                        return loc.first
+                except Exception:
+                    continue
+            if time.time() >= fim:
+                break
+            self.page.wait_for_timeout(300)
+        self.shot(f"erro_{chave}")
+        raise RoboError(f"Não achei o campo de arquivo '{chave}' na tela de Conteúdo.")
 
     def _preparar_uploads(self, itens: list[tuple[str, str]], destino: str) -> list[str]:
         """Copia cada arquivo pra `destino` com o nome desejado (titulo traduzido),
